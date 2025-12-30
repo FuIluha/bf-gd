@@ -1,23 +1,6 @@
 """
 5G LDPC codes constructor
 """
-
-# This file is part of the simulator_awgn_python distribution
-# https://github.com/and-kirill/sim_ldpc_python/.
-# Copyright (c) 2023 Kirill Andreev.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, version 3.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-# General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
-
 import json
 import os
 import argparse
@@ -25,7 +8,8 @@ import argparse
 import numpy as np
 import galois
 
-from ldpc_soft_py.ldpc import Alist
+from ldpc_soft_py.bin_ldpc_soft import Alist
+from ldpc_soft_py.bin_pcm_tools import expand_pcm
 
 CODES_DIR = 'codes'
 
@@ -112,25 +96,6 @@ def get_pcm_expander(n_inf_bits, base_graph):
     return np.hstack([pcm_expander[:, :k_base], pcm_expander[:, kb_max:]]), k_base
 
 
-def expand_pcm(factor, pcm_exp):
-    """
-    Expand the base parity check matrix
-    """
-    # Only binary codes supported
-    n_checks, blocklen_base = pcm_exp.shape
-    pcm = []
-    for i in range(n_checks):
-        layer = []
-        for j in range(blocklen_base):
-            shift = pcm_exp[i, j]
-            if shift == -1:
-                layer.append(np.zeros((factor, factor)))
-            else:
-                layer.append(np.roll(np.eye(factor), shift, axis=1))
-        pcm.append(np.hstack(layer))
-    return np.vstack(pcm)
-
-
 def get_filename_template(pcm, factor):
     """
     Generate filename template for LDPC code:
@@ -173,7 +138,7 @@ def generate_5g_code(inf_bits_count, coding_rate, base_graph):
     code = {
         'pcm': filename_template + '_pcm.alist',
         'punc_idx': f'0:{2 * factor - 1}',
-        'inf_bits': f'0:{pcm.shape[1] - pcm.shape[0]}'
+        'inf_bits': f'0:{pcm.shape[1] - pcm.shape[0] - 1}'
     }
     if gen_mtx_file:
         code['generator'] = gen_mtx_file

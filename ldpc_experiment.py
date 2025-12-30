@@ -1,176 +1,134 @@
 """
-LDPC simulation routines
+LDPC simulation and postprocessing workflow
 """
 
-# This file is part of the simulator_awgn_python distribution
-# https://github.com/and-kirill/sim_ldpc_python/.
-# Copyright (c) 2023 Kirill Andreev.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, version 3.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-# General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
-
+import os
+import dataclasses
 import numpy as np
-from simulator_awgn_python.simulator import DataEntry
-from simulator_awgn_python.channel import AwgnQAMChannel
-from simulator_awgn_python.tools import range_from_string
-from ldpc_soft_py.ldpc import LdpcDecoder, Alist, lib_compile
 
-# Global per-process instances of AWGN LDPC instance
-G_LDPC_IMPL = None
+from codec_impl import instantiate_codec
 
 
-class LdpcAwgn:
+from simulator_awgn_python.data_storage import DataEntry
+from simulator_awgn_python.channel import AwgnQAMChannel, output_ber
+from simulator_awgn_python.tools import dir_exists
+from simulator_awgn_python.settings import HLINE_STR
+
+
+@dataclasses.dataclass
+class LdpcDataEntry(DataEntry):
+    """
+    Data entry extension to keep track of iteration count distribution
+    """
+    n_iter: int  # actual number of decoding iterations
+    iter_pdf: np.array
+
+    def __str__(self):
+        msg = super().__str__()
+        avg_iter = self.n_iter / self.tests if self.tests else 0
+        msg += f', {avg_iter:1.3f} avg. iterations'
+        return msg
+
+
+@dataclasses.dataclass
+class LdpcExperimentSettings:
+    """
+    LDPC experiment parameters
+    """
+    # Channel settings
+    #  - Modulation (a required parameter for simulations)
+    modulation: str
+    #  - Channel output ('soft' or 'hard')
+    channel_output: str
+    # Codec settings (to be parsed further)
+    codec: dict  # Full settings (to be passed to a specific decoder)
+
+    # Parameters to be filled at post_init
+    data_dir: str = 'data'  # Directory where the simulation results will be saved
+    filename: str = ''  # To save the simulated data
+    title: str = ''  # To generate a live-plot title
+    inf_bits_count: int = 0  # To estimate the simulation bit-rate
+    codec_info: str = ''  # Human-readable codec information
+
+    def __post_init__(self):
+        # Check that data directory is correct
+        dir_exists(self.data_dir)
+        # Check channel parameters
+        AwgnQAMChannel(self.modulation)  # Check that the modulation is supported
+        if self.channel_output not in ['soft', 'hard']:
+            raise ValueError(f'Channel output {self.channel_output} is not supported')
+        codec_instance = instantiate_codec(**self.codec)
+
+        self.filename = os.path.join(
+            self.data_dir,
+            codec_instance.get_filename_template() + '_' +
+            self.modulation + '_' + self.channel_output + '.pickle'
+        )
+        self.title = (
+            codec_instance.get_title_template() +
+            ', modulation ' + self.modulation + '-' + self.channel_output
+        )
+        self.codec_info = codec_instance.__str__()
+        self.inf_bits_count = codec_instance.get_inf_bits_count()
+
+    def __str__(self):
+        msg = HLINE_STR + '\n'
+        msg += 'Channel parameters:\n'
+        msg += f'  Modulation:                        {self.modulation.upper()}\n'
+        msg += f'  Channel output:                    {self.channel_output}\n'
+        msg += HLINE_STR + '\n'
+        msg += self.codec_info + '\n'
+        msg += HLINE_STR + '\n'
+        msg += f'Output filename: {self.filename}'
+        return msg
+
+
+class LdpcExperimentInstance:
     """
     Run LDPC decoder with AWGN channel.
     Has a lot of bulky data, is not an Experiment instance required by the simulator.
     """
-    def __init__(self, **kwargs):
-        # Load generator matrix (if present)
-        if 'generator' in kwargs:
-            self.generator = np.loadtxt(kwargs.get('generator')).astype(np.uint8)
-            self.iwd_len = self.generator.shape[0]
-        else:
-            self.generator = None
-        # Set punctured nodes
-        if 'punc_idx' in kwargs:
-            self.punc_idx = range_from_string(kwargs.get('punc_idx'))
-        else:
-            self.punc_idx = None
-        # Load decoding algorithm parameters
-        self.algorithm = kwargs.get('algorithm')
-        if self.algorithm not in ['sum_product', 'min_sum', 'layered_min_sum']:
-            raise TypeError(f'Unknown decoding algorithm {self.algorithm}')
-        if self.algorithm == 'layered_min_sum':
-            self.llr_scale = kwargs.get('llr_scale')
-            if self.llr_scale is None:
-                raise TypeError('Provide LLR scale for layered min-sum')
-
-        self.n_iterations = kwargs.get('n_iterations')
-
-        # Load information bits indices. If not provided, calculate BER using a whole codeword
-        self.inf_bits = kwargs.get('inf_bits')
-        if self.inf_bits is not None:
-            self.inf_bits = range_from_string(self.inf_bits)
-
-        self.channel = AwgnQAMChannel(kwargs.get('modulation'))
-        self.decoder_impl = LdpcDecoder(kwargs.pop('pcm'))
-
-    def encode(self, rng):
-        """
-        Generate a codeword. If there is no generator matrix, return a zero codeword
-        """
-        # Encode
-        if self.generator is None:
-            return np.zeros(self.decoder_impl.block_len).astype(np.uint8)
-        iwd = (rng.random(size=self.iwd_len) < 0.5).astype(np.uint8)
-        return np.mod(iwd @ self.generator, 2)
-
-    def decode(self, llr_channel):
-        """
-        Apply ouncturing and perform decoding
-        """
-        if self.punc_idx is not None:
-            llr_channel[self.punc_idx] = 0
-        if self.algorithm == 'sum_product':
-            llr_out = self.decoder_impl.sum_product(llr_channel, self.n_iterations)
-        elif self.algorithm == 'min_sum':
-            llr_out = self.decoder_impl.min_sum(llr_channel, self.n_iterations)
-        elif self.algorithm == 'layered_min_sum':
-            llr_out = self.decoder_impl.layered_min_sum(
-                llr_channel,
-                self.n_iterations,
-                self.llr_scale
-            )
-        else:
-            raise NotImplementedError('Unknown decoding algorithm')
-        return llr_out < 0
-
-    def run(self, snr_db, rng):
-        """
-        Perform single experiment trial
-        """
-        cwd = self.encode(rng)
-        # Modulation and AWGN channel
-        use_adapter = self.generator is None
-        [llr_channel, in_ber, in_ser] = self.channel.run(cwd, snr_db, rng, use_adapter=use_adapter)
-        cwd_hat = self.decode(llr_channel)
-
-        if self.inf_bits is not None:
-            out_ber = np.mean(cwd_hat[self.inf_bits] != cwd[self.inf_bits])
-        else:
-            out_ber = np.mean(cwd_hat != cwd)
-
-        # Fill output channel statistics
-        stats = DataEntry()
-        stats.in_ber = in_ber
-        stats.in_ser = in_ser
-        stats.out_ber = out_ber
-        stats.out_fer = out_ber > 0
-        stats.n_exp = 1
-        return stats
-
-
-class LdpcExperiment:
-    """
-    Class wrapper to perform independent tests within a Simulator
-    """
-    def __init__(self, **kwargs):
-        lib_compile()
-
-        self.params = kwargs
-        self.modulation = kwargs.get('modulation')
-
-        n_checks, blocklen = Alist.read(kwargs.get('pcm')).shape
-        # Re-derive code parameters
-        n_inf_bits = blocklen - n_checks
-        if 'punc_idx' in kwargs:
-            blocklen = blocklen - len(range_from_string(kwargs.get('punc_idx')))
-        algorithm = kwargs.get('algorithm')
-        alg_str = algorithm
-        if algorithm == 'layered_min_sum':
-            llr_scale = kwargs.get('llr_scale')
-            alg_str += f'_{llr_scale:1.3f}'
-
-        n_iter = kwargs.get('n_iterations')
-
-        self.title = f'LDPC code k = {n_inf_bits}, n = {blocklen} bits. {alg_str} decoder,'
-        self.title += f' {n_iter} iterations, {self.modulation.upper()} modulation.'
-
-        pickle_file = f'ldpc_k{n_inf_bits}_n{blocklen}_{self.modulation}_{alg_str}_iter{n_iter}'
-        self.filename = f'data/{pickle_file}.pickle'
-
-    def get_filename(self):
-        """
-        Generate filename template from settings
-        """
-        return self.filename
-
-    def get_title(self):
-        """
-        Human-readable title for plot header
-        """
-        return self.title
-
-    def run(self, snr_db, rng):
-        """
-        Perform single experiment trial
-        """
-        global G_LDPC_IMPL
-        return G_LDPC_IMPL.run(snr_db, rng)
-
-    def init_worker(self):
-        """
-        Initialize per-process global variables
-        """
+    def __init__(self, settings):
+        self.settings = settings
         # Initialize channel
-        global G_LDPC_IMPL
-        G_LDPC_IMPL = LdpcAwgn(**self.params)
+        self.channel = AwgnQAMChannel(self.settings.modulation)
+        self.is_channel_hard = self.settings.channel_output == 'hard'
+        # Initialize encoder instance
+        self.codec = instantiate_codec(**settings.codec)
+
+    def run_channel(self, cwd, snr_db, rng):
+        """
+        Run AWGN channel
+        """
+        use_adapter = not hasattr(self.codec, 'encoder')
+        [llr_channel, in_ber, in_ser] = self.channel.run(cwd, snr_db, rng, use_adapter=use_adapter)
+        if self.is_channel_hard:
+            llr_channel = np.sign(llr_channel)
+        return llr_channel, in_ber, in_ser
+
+    def run(self, snr_db, rng):
+        """
+        Perform single experiment trial
+        """
+        cwd = self.codec.generate(rng)
+        llr_channel, in_ber, in_ser = self.run_channel(cwd, snr_db, rng)
+        llr_in = self.codec.post_channel(llr_channel)  # Puncturing
+        llr_out, n_iter = self.codec.decode(llr_in)
+        out_ber = output_ber(llr_out, cwd, self.codec.inf_bits)
+        return LdpcDataEntry(
+            in_be_cum=in_ber,
+            in_se_cum=in_ser,
+            be_cum=out_ber,
+            fe_cum=out_ber > 0,
+            n_iter=n_iter,
+            iter_pdf=self.one_hot(n_iter),
+            tests=1
+        )
+
+    def one_hot(self, n_iter):
+        """
+        One-hot encoding for iteration count PDF
+        """
+        vec = np.zeros(self.codec.n_iterations + 1, dtype=np.int32)
+        vec[n_iter] = 1
+        return vec

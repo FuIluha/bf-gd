@@ -1,4 +1,5 @@
 .idea
+*.log
 __pycache__
 data/*.pickle
 data/*.lock
@@ -6,6 +7,10 @@ data/*.txt
 plot_server.log
 simulator.log
 *crash.txt
+
 codes/*.json
-codes/*.lock
 codes/*.txt
+codes/*.alist
+
+lbc_encoder/*.o
+lbc_encoder/*.so

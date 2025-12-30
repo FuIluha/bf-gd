@@ -16,7 +16,7 @@ The JSON file specifying code contains the following parameters:
 - `punc_idx` a list of punctured indices in the string format, like `0:15`. If this parameter is absent, no puncturing is assumed.
 - `inf_bits` specifies indices of information bits. If this parameter is missing, then the output bit error rate will be evaluated using a whole codeword.
 
-See [main.py](main.py) for more details.
+See [example.sh](example.sh) for more details.
 ## Tools
 ### 5G LDPC constructor
 See [ldpc_5g.py](ldpc_5g.py) script.
