@@ -6,6 +6,7 @@ import numpy as np
 
 from lbc_encoder.lbc_encoder import lib_compile as lbc_compile
 from ldpc_soft_py.bin_ldpc_soft import lib_compile as ldpc_compile
+from simulator_awgn_python.channel import lib_compile as chan_compile
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings, LdpcDataEntry
 from simulator_awgn_python.tools import load_json
 
@@ -13,6 +14,7 @@ def compile_all():
     """
     Compile all libraries involved
     """
+    chan_compile()
     ldpc_compile()  # LDPC codec
     lbc_compile()  # Low-complexity encoder
 
@@ -29,7 +31,7 @@ def single_run():
     # Create experiment instance
     exp_instance = LdpcExperimentInstance(exp_settings)
     # Perform single run and print the output
-    data = exp_instance.run(0.0, np.random.default_rng(seed=1))
+    data = exp_instance.run(-8.0, np.random.default_rng(seed=1))
     print(data)
 
 

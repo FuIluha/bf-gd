@@ -10,7 +10,7 @@ from codec_impl import instantiate_codec
 
 
 from simulator_awgn_python.data_storage import DataEntry
-from simulator_awgn_python.channel import AwgnQAMChannel, output_ber
+from simulator_awgn_python.channel import AwgnQAMChannel
 from simulator_awgn_python.tools import dir_exists
 from simulator_awgn_python.settings import HLINE_STR
 
@@ -54,7 +54,6 @@ class LdpcExperimentSettings:
         # Check that data directory is correct
         dir_exists(self.data_dir)
         # Check channel parameters
-        AwgnQAMChannel(self.modulation)  # Check that the modulation is supported
         if self.channel_output not in ['soft', 'hard']:
             raise ValueError(f'Channel output {self.channel_output} is not supported')
         codec_instance = instantiate_codec(**self.codec)
@@ -90,31 +89,45 @@ class LdpcExperimentInstance:
     """
     def __init__(self, settings):
         self.settings = settings
+        # Instantiate codec
+        self.codec = instantiate_codec(**settings.codec)
         # Initialize channel
-        self.channel = AwgnQAMChannel(self.settings.modulation)
+        placeholders_shape = (self.codec.block_length(),)
+        dtype = getattr(np, self.codec.llr_type)
+        self.tx_bits = np.zeros(placeholders_shape, dtype=np.uint8)
+        if not self.codec.is_azcw():
+            self.iwd = np.zeros((self.codec.get_inf_bits_count(),), dtype=np.uint8)
+        self.llr_in = np.zeros(placeholders_shape, dtype=dtype)
+        self.llr_out = np.zeros(placeholders_shape, dtype=dtype)
+        self.channel = AwgnQAMChannel(
+            self.settings.modulation, # Modulation
+            self.tx_bits[self.codec.punctured:], # transmitted bits placeholder
+            self.llr_in[self.codec.punctured:], # LLR placeholder
+            self.codec.is_azcw()  # Check whether an adapter required
+            )
         self.is_channel_hard = self.settings.channel_output == 'hard'
         # Initialize encoder instance
-        self.codec = instantiate_codec(**settings.codec)
 
-    def run_channel(self, cwd, snr_db, rng):
+    def run_channel(self, snr_db, rng):
         """
         Run AWGN channel
         """
-        use_adapter = not hasattr(self.codec, 'encoder')
-        [llr_channel, in_ber, in_ser] = self.channel.run(cwd, snr_db, rng, use_adapter=use_adapter)
+        in_ber, in_ser = self.channel.run(snr_db, rng)
         if self.is_channel_hard:
             llr_channel = np.sign(llr_channel)
-        return llr_channel, in_ber, in_ser
+        return in_ber, in_ser
 
     def run(self, snr_db, rng):
         """
         Perform single experiment trial
         """
-        cwd = self.codec.generate(rng)
-        llr_channel, in_ber, in_ser = self.run_channel(cwd, snr_db, rng)
-        llr_in = self.codec.post_channel(llr_channel)  # Puncturing
-        llr_out, n_iter = self.codec.decode(llr_in)
-        out_ber = output_ber(llr_out, cwd, self.codec.inf_bits)
+        if not self.codec.is_azcw():
+            self.codec.generate(rng, self.iwd, self.tx_bits)
+        in_ber, in_ser = self.run_channel(snr_db, rng)
+
+        n_iter = self.codec.decode(self.llr_in, self.llr_out)
+        out_ber = self.output_ber(n_iter)
+
         return LdpcDataEntry(
             in_be_cum=in_ber,
             in_se_cum=in_ser,
@@ -124,6 +137,14 @@ class LdpcExperimentInstance:
             iter_pdf=self.one_hot(n_iter),
             tests=1
         )
+
+    def output_ber(self, n_iter):
+        """
+        Calculate output BER. Avoid passing data to ctypes if early termination happened
+        """
+        if self.codec.is_azcw() and n_iter < self.codec.n_iterations:
+            return 0.0
+        return self.codec.decoder_impl.output_ber(self.llr_out, self.tx_bits, n_iter)
 
     def one_hot(self, n_iter):
         """

@@ -4,27 +4,14 @@ LDPC codecs implementation
 
 import os
 import sys
-import numpy as np
 
-from simulator_awgn_python.tools import load_json, read_array
+from simulator_awgn_python.tools import load_json
+from simulator_awgn_python.channel import random_bits
 
 from lbc_encoder.lbc_encoder import LBCEncoder
-from lbc_encoder.lbc_encoder import lib_compile as lbc_compile
 
 from ldpc_soft_py.bin_ldpc_soft import Alist
 from ldpc_soft_py.bin_ldpc_soft import BinLdpcSoftDecoder, BinGldpcSoftDecoder
-from ldpc_soft_py.bin_ldpc_soft import lib_compile as ldpc_compile
-
-
-def get_array(config, field):
-    """
-    Try to read array from the configuration
-    return None if field is missing
-    """
-    field_val = config.get(field, None)
-    if field_val is None:
-        return np.array([])
-    return read_array(field_val)
 
 
 class BinaryCodecBase:
@@ -36,9 +23,7 @@ class BinaryCodecBase:
         * file specifying the parity check matrix (alist format), obligatory parameter
         * file specifying generator matrix (txt format, loaded by np.loadtxt(). If not specified,
           the simulation will be performed on all-zero codewords (AZCW)
-        * List of punctured bits, described by a string (MATLAB-like syntax supported) or by a list
-        * List of shortened bits
-    Coding rate will be calculated in accordance with shortened and punctured structure.
+    Coding rate will be calculated in accordance with shortened positions.
     """
     def __init__(self, **kwargs):
         src_dir = kwargs.get('src_dir')
@@ -51,20 +36,16 @@ class BinaryCodecBase:
         # Get a unique name for a dedicated filename
         self.name = config.get('name', '')
 
-        # Punctured and shortened positions
-        self.punc_idx = get_array(config, 'punc_idx').astype(np.int32)
+        # Punctured positions: always assumed to be first
+        self.punctured = int(config.get('punctured', 0))
 
-        # List of information bits indices. If empty, estimate BER given a whole codeword
-        self.inf_bits = get_array(config, 'inf_bits')
+        # For systematic code, evaluate FER using the first k positions
+        # Use a whole codeword otherwise
+        self.is_systematic = config.get('is_systematic', False)
 
         # Read the shape of the parity check matrix
         self.alist_path = os.path.join(src_dir, config.get('pcm'))
         self.pcm_shape = Alist.read_shape(self.alist_path)
-        if self.inf_bits.size > 0 and len(self.inf_bits) != self.get_inf_bits_count():
-            raise ValueError(
-                f'Information bits mismatch: code dimension is {self.get_inf_bits_count()}' +
-                f', length of information bits sequence is {len(self.inf_bits)}.'
-            )
 
         # Read the generator matrix and initialize the encoder:
         generator_path = config.get('generator', None)
@@ -75,23 +56,19 @@ class BinaryCodecBase:
 
         self.decoder_impl = None  # To be instantiated by subclass
 
-    def generate(self, rng):
+    def generate(self, rng, iwd, cwd):
         """
         Generate the information word and codeword
         return: codeword
         """
-        if hasattr(self, 'encoder'):
-            iwd = self.encoder.generate_iwd(rng)
-            return self.encoder.encode(iwd)
-        return np.zeros((self.decoder_impl.block_len,), dtype=np.uint8)
+        random_bits(iwd, rng)
+        self.encoder.encode(iwd, cwd)
 
-    def post_channel(self, llr_channel):
+    def block_length(self):
         """
-        Apply shortening and puncturing
+        Get a full codeword length (including punctured bits)
         """
-        if self.punc_idx.size > 0:
-            llr_channel[self.punc_idx] = 0
-        return llr_channel
+        return self.pcm_shape[1]
 
     def get_inf_bits_count(self):
         """
@@ -101,11 +78,12 @@ class BinaryCodecBase:
         """
         raise NotImplementedError('Must be implemented by subclass')
 
-    def decode(self, llr_in):
+    def decode(self, llr_in, llr_out):
         """
         Run decoder implementation
         :param llr_in input LLR vector with puncturing being applied (if needed)
-        :return output LLRs and the number of decoding iterations
+        :param llr_out output LLR vector placeholder
+        :return The number of decoding iterations
         """
         raise NotImplementedError('Must be implemented by subclass')
 
@@ -130,13 +108,10 @@ class BinaryCodecBase:
         """
         Block length string and value with punctured/shortened bits taken into account
         """
-        n_punctured = len(self.punc_idx)
-        # Force conversion to int
-        # https://github.com/numpy/numpy/issues/19294
-        block_len_val = int(self.pcm_shape[1] - n_punctured)
+        block_len_val = int(self.pcm_shape[1]) - self.punctured
         msg = f'{block_len_val}'
-        if n_punctured:
-            msg += f' ({n_punctured} punctured)'
+        if self.punctured:
+            msg += f' (first {self.punctured} are punctured)'
 
         return msg, block_len_val
 
@@ -159,8 +134,8 @@ class BinaryCodecBase:
         msg += f'  Information bits count:    {self.get_inf_bits_count()}\n'
         msg += f'  Coding rate:               {self.get_inf_bits_count() / block_len_val:1.4f}\n'
         msg += '  Estimating FER by:         '
-        if len(self.inf_bits):
-            msg += 'information word (positions specified)'
+        if self.is_systematic:
+            msg += 'first positions (systematic code)'
         else:
             msg += 'a whole codeword'
         return msg
@@ -173,17 +148,18 @@ class BinarySoftCodecBase(BinaryCodecBase):
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.llr_scale = kwargs.get('llr_scale')
         self.llr_type = kwargs.get('llr_type')
         self.n_iterations = kwargs.get('n_iterations')
+        self.llr_scale = kwargs.get('llr_scale')
         self.algorithm = kwargs.get('algorithm')
         # Sanity checks
-        if not isinstance(self.n_iterations, int) or self.n_iterations <= 0:
-            raise ValueError('The number of decoding iterations must be positive')
         if not isinstance(self.llr_scale, float) or self.llr_scale < 0:
             raise ValueError('LLR scale must be non-negative')
-        if self.llr_type not in ['float64', 'float32']:
+        if not isinstance(self.n_iterations, int) or self.n_iterations <= 0:
+            raise ValueError('The number of decoding iterations must be positive')
+        if self.llr_type not in ('float32', 'float64'):
             raise ValueError(f'LLR type {self.llr_type} is not supported')
+
 
     def get_inf_bits_count(self):
         """
@@ -193,7 +169,7 @@ class BinarySoftCodecBase(BinaryCodecBase):
         """
         raise NotImplementedError('Must be implemented by subclass')
 
-    def decode(self, llr_in):
+    def decode(self, llr_in, llr_out):
         """
         Run decoder implementation
         """
@@ -218,14 +194,19 @@ class BinarySoftCodecBase(BinaryCodecBase):
 
     def get_decoder_instance(self, dec_type):
         """
-        Instantiate particular decoder implementation
+        Instantiate particular decoder implementation.
+        Pass all fields required to initialize decoding settings structure
         """
         dec_instance = dec_type(
-            alist_filename=self.alist_path,
-            llr_type_str=self.llr_type,
+            self.alist_path,
+            block_length=self.pcm_shape[1],
+            n_checks=self.pcm_shape[0],
+            llr_type=self.llr_type,
+            llr_scale=self.llr_scale,
             n_iterations=self.n_iterations,
-            llr_scale=self.llr_scale
-        )
+            is_systematic=self.is_systematic,
+            is_azcw=self.is_azcw()
+            )
         try:
             dec_fcn = getattr(dec_instance, self.algorithm)
         except AttributeError as exc:
@@ -235,6 +216,12 @@ class BinarySoftCodecBase(BinaryCodecBase):
             ) from exc
         return dec_instance, dec_fcn
 
+    def is_azcw(self):
+        """
+        If there is no encoder specified, the simulation is run using all-zeros-codewords
+        """
+        return not hasattr(self, 'encoder')
+
     def __str__(self):
         msg = super().__str__() + '\n'
         msg += 'Decoder-specific parameters:\n'
@@ -242,7 +229,7 @@ class BinarySoftCodecBase(BinaryCodecBase):
         msg += f'  The number of iterations:  {self.n_iterations}\n'
         msg += f'  LLR type:                 \'{self.llr_type}\'\n'
         if self.algorithm != 'sum_product':
-            msg += f'  LLR scale:                 {self.llr_scale}'
+            msg += f'  LLR scale:                 {self.llr_scale:1.3f}'
         return msg
 
 
@@ -263,11 +250,11 @@ class BinaryGldpcSoftCodec(BinarySoftCodecBase):
         """
         return self.pcm_shape[1] - 2 * self.pcm_shape[0]
 
-    def decode(self, llr_in):
+    def decode(self, llr_in, llr_out):
         """
         Decoding function implementation
         """
-        return self.dec_fcn(llr_in, True)
+        return self.dec_fcn(llr_in, llr_out)
 
     def get_filename_template(self):
         """
@@ -302,12 +289,11 @@ class BinaryLdpcSoftCodec(BinarySoftCodecBase):
         """
         return self.pcm_shape[1] - self.pcm_shape[0]
 
-    def decode(self, llr_in):
+    def decode(self, llr_in, llr_out):
         """
         Decoding function implementation
         """
-        is_azcw = not hasattr(self, 'encoder')
-        return self.dec_fcn(llr_in, is_azcw)
+        return self.dec_fcn(llr_in, llr_out)
 
     def get_filename_template(self):
         """

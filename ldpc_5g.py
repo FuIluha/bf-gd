@@ -137,8 +137,8 @@ def generate_5g_code(inf_bits_count, coding_rate, base_graph):
 
     code = {
         'pcm': filename_template + '_pcm.alist',
-        'punc_idx': f'0:{2 * factor - 1}',
-        'inf_bits': f'0:{pcm.shape[1] - pcm.shape[0] - 1}'
+        'punctured': f'{2 * factor}',
+        'is_systematic': 'True'
     }
     if gen_mtx_file:
         code['generator'] = gen_mtx_file

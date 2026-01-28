@@ -72,13 +72,12 @@ class LBCEncoder:
         ]
         return lib
 
-    def encode(self, iwd):
+    def encode(self, iwd, cwd):
         """
 
-        :param iwd: information word (np array of type np.uint8)
-        :return: codeword (np.array of type np.uint8)
+        :param iwd: information word placeholder (np array of type np.uint8)
+        :param cwd: codeword placeholder (np array of type np.uint8)
         """
-        cwd = np.zeros((self.cwd_length,), dtype=np.uint8)
         self.lib.generator_multiply(
             self.generator,
             iwd.astype(np.uint8),  # Information word, converted to np.uint8
@@ -86,12 +85,3 @@ class LBCEncoder:
             self.inf_bits,
             self.cwd_length
         )
-        return cwd
-
-    def generate_iwd(self, rng):
-        """
-        Generate the information word
-        :param rng: random number generator instance
-        :return: information word (np.array of length k, type np.uint8)
-        """
-        return rng.integers(low=0, high=2, size=self.inf_bits, dtype=np.uint8)
