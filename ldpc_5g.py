@@ -76,7 +76,7 @@ def get_pcm_expander(n_inf_bits, base_graph):
 
     pcm_base = np.array(bg_data['H'])
     kb_max = pcm_base.shape[1] - pcm_base.shape[0]
-
+    # Cases below correspond to base graph 2
     if n_inf_bits > 640:
         k_base = kb_max
     elif n_inf_bits > 560:
@@ -85,6 +85,10 @@ def get_pcm_expander(n_inf_bits, base_graph):
         k_base = 8
     else:
         k_base = 6
+
+    # For base graph 1, k_base = 22 for all cases
+    if base_graph == 1:
+        k_base = kb_max
     factor = int(np.round(n_inf_bits / k_base))
 
     print(f'Factor: {factor}, K_b = {k_base}.')
