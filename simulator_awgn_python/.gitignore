@@ -1,0 +1,10 @@
+.idea
+__pycache__
+venv
+*.pickle
+*.txt
+*.log
+*.pdf
+*.aux
+*.lock
+*.so

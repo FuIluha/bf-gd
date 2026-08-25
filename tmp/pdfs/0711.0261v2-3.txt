@@ -1,0 +1,507 @@
+                                                                                                                                                                              1
+
+
+
+
+                                               Gradient Descent Bit Flipping Algorithms for
+                                                         Decoding LDPC Codes
+                                                                     Tadashi Wadayama†, Keisuke Nakamura†, Masayuki Yagita† ,
+                                                                          Yuuki Funahashi†† , Shogo Usami†† , Ichi Takumi†
+
+
+
+                                           Abstract— A novel class of bit-flipping (BF) algorithms for     Namely, C̃, which is a subset of {+1, −1}n, is obtained from
+                                       decoding low-density parity-check (LDPC) codes is presented.        C by using binary (0, 1) to bipolar (+1, −1) conversion.
+arXiv:0711.0261v2 [cs.IT] 8 Apr 2008
+
+
+
+
+                                       The proposed algorithms, which are called gradient descent bit
+                                       flipping (GDBF) algorithms, can be regarded as simplified gradi-
+                                                                                                              The binary-input AWGN channel is assumed in the paper,
+                                       ent descent algorithms. Based on gradient descent formulation,      which is defined by y = c + z (c ∈ C̃). The vector
+                                       the proposed algorithms are naturally derived from a simple         z = (z1 , . . . , zn ) is a white Gaussian noise vector where
+                                       non-linear objective function.                                      zj (j ∈ [1, n]) is an i.i.d. Gaussian random variable with zero
+                                         †: Nagoya Institute of Technology, ††: Meijo University.          mean and variance σ 2 . The notation [a, b] denotes the set of
+                                                                                                           consecutive integers from a to b.
+                                                                                                                                                                    △
+                                                                                                              Let N (i) and M (j)(i ∈ [1, m], j ∈ [1, n]) be N (i) = {j ∈
+                                                                                                                                         △
+                                                             I. I NTRODUCTION                              [1, n] : hij = 1} and M (j) = {i ∈ [1, m] : hij = 1} where
+                                                                                                           hij is the ij-element of the parity check matrix Q
+                                                                                                                                                            H. Using this
+                                          Bit-flipping (BF) algorithms for decoding low-density            notation, we can write the parity condition as:     j∈N (i) xj =
+                                       parity-check (LDPC) codes [1] have been investigated exten-         1(∀i ∈ [1,Q  m]) which is equivalent to (x1 , . . . , xn ) ∈ C̃.
+                                       sively and many variants of BF algorithms such as weighted          The value j∈N (i) xj ∈ {+1, −1} is called the i-th bipolar
+                                       BF (WBF) [2], modified weighted BF (MWBF) [3], and                  syndrome of x.
+                                       other variants [4], [5], [6] have been proposed. The first
+                                       BF algorithm was developed by Gallager [1]. In a decoding
+                                       process of Gallager’s algorithm, some unreliable bits (in a
+                                       binary quantized received word) corresponding to unsatisfied        B. Brief review on known BF algorithms
+                                       parity checks are flipped for each iteration. The successors           A number of variants of BF algorithms have been devel-
+                                       of Gallager’s BF algorithm inherits the basic strategy of           oped. We can classify the BF algorithms into two-classes:
+                                       Gallager’s algorithm, namely, find unreliable bits and then flip    single bit flipping (single BF) algorithms and multiple bits
+                                       them. Although the bit error rate (BER) performance of the BF       flipping (multi BF) algorithms. In the decoding process of the
+                                       algorithm is inferior to that of the sum-product algorithm or the   single BF algorithm, only one bit is flipped according to its
+                                       min-sum algorithm, in general, the BF algorithm enables us to       bit flipping rule. On the other hand, the multi BF algorithm
+                                       design a much simpler decoder, which is easier to implement.        allows multiple bit flipping per iteration in a decoding process.
+                                       Thus, bridging the performance gap between BF decoding and          In general, although the multi BF algorithm shows faster
+                                       BP decoding is an important technical challenge.                    convergence than the single BF algorithm, the multi BF
+                                          In the present paper, a novel class of BF algorithms for         algorithm suffers from the oscillation behavior of a decoder
+                                       decoding LDPC codes is presented. The proposed algorithm,           state, which is not easy to control. The framework of the single
+                                       which are called gradient descent bit flipping (GDBF) al-           BF algorithms is summarized as follows:
+                                       gorithms, can be regarded as bit-flipping gradient descent
+                                       algorithms. The proposed algorithms are naturally derived                 Single BF algorithm
+                                       from a simple gradient descent formulation. The behavior of                                                                       △
+                                       the proposed algorithm can be explained from the viewpoint                Step 1 For j ∈ [1, n], let xj := sign(yj ). Let x =
+                                       of the optimization of a non-linear objective function.                          (x1 , x2 , . . . , xn ). Q
+                                                                                                                 Step 2 If the parity equation j∈N (i) xj = +1 holds
+                                                                                                                        for all i ∈ [1, m], output x, and then exit.
+                                                            II. P RELIMINARIES                                   Step 3 Find the flip position given by
+                                       A. Notation                                                                                   ℓ := arg min ∆k (x).               (1)
+                                                                                                                                              k∈[1,n]
+                                          Let H be a binary m × n parity check matrix, where n >
+                                                                                         △                              and then flip the symbol: xℓ := −xℓ . The
+                                       m ≥ 1. The binary linear code C is defined by C = {c ∈ F2n :
+                                       Hc = 0}, where F2 denotes the binary Galois field. In the                        function ∆k (x) is called an inversion function.
+                                       present paper, a vector is assumed to be a column vector. For             Step 4 If the number of iterations is under the maxi-
+                                       convention, we introduce the bipolar codes C̃ corresponding                      mum number of iterations Lmax , return to Step
+                                                           △                                                            2; otherwise output x and exit.
+                                       to C as follows: C̃ = {(1−2c1, 1−2c2, . . . , 1−2cn) : c ∈ C}.
+                                                                                                                                                      2
+
+
+
+  The function sign(·) is defined by                                         B. Gradient descent BF algorithm
+                                                                               For the numerical optimization problem for a differentiable
+                           
+                        △     +1, x ≥ 0
+                sign(x) =                                             (2)    function such as (5), the gradient descent method [8] is a
+                              −1, x < 0.
+                                                                             natural choice for the first attempt. The partial derivative
+In a decoding process of the single BF algorithm, hard decision
+                                                                             of f (x) with respect to the variable xk (k ∈ [1, n]) can be
+decoding for a given y is first performed, and x is initialized
+                                                                             immediately derived from the definition of f (x):
+to the hard decision result. The minimum of the inversion
+function ∆k (x) for k ∈ [1, n] is then found1. An inversion                               ∂                  X      Y
+                                                                                             f (x) = yk +                  xj .        (6)
+function ∆k (x) can be seen as a measure of the invalidness                              ∂xk
+                                                                                                                 i∈M(k) j∈N (i)\k
+of bit assignment on xk . The bit xℓ , where ℓ gives the smallest
+value of the inversion function, is then flipped.                              Let us consider the product of xk and the partial derivative
+   The inversion functions of WBF [2] are defined by                         of xk in x, namely
+                (W BF )     △ X           Y                                                ∂                    X Y
+              ∆k        (x) =          βi       xj .          (3)                      xk     f (x) = xk yk +               xj .        (7)
+                                                                                          ∂xk
+                                  i∈M(k)      j∈N (i)                                                                    i∈M(k) j∈N (i)
+
+The values βi (i ∈ [1, m]) is the reliability of bipolar syn-                For a small real number s, we have the first-order approxima-
+                       △                                                     tion:
+dromes defined by βi = minj∈N (i) |yj |. In this case, the in-
+version function ∆k
+                   (W BF )
+                           (x) gives the measure of invalidness                                                                      ∂
+                                                                                   f (x1 , . . . , xk + s, . . . , xn ) ≃ f (x) + s     f (x). (8)
+of symbol assignment on xk , which is given by the sum of                                                                           ∂xk
+the weighted bipolar syndromes.                                              When ∂x∂ k f (x) > 0, we need to choose s > 0 in order to
+  The inversion functions of MWBF [3] has a similar form                     have
+of the inversion function of WBF but it contains a term                                    f (x1 , . . . , xk + s, . . . , xn ) > f (x). (9)
+corresponding to a received symbol. The inversion function
+of MWBF is given by                                                          On the other hand, if ∂x∂ k f (x) < 0 holds, we should choose
+          (MW BF )     △             X        Y                              s < 0 to obtain the inequality (9). Therefore, if xk ∂x∂ k f (x) <
+        ∆k         (x) = α|yk | +         βi       xj ,     (4)              0, then flipping the kth symbol (xk := −xk ) may increase the
+                                        i∈M(k)      j∈N (i)                  objective function value2 .
+where the parameter α is a positive real number.                                One reasonable way to find a flipping position is to choose
+                                                                             the position at which the absolute value of the partial derivative
+          III. G RADIENT DESCENT FORMULATION                                 is largest. This flipping rule is closely related to the steepest
+A. Objective function                                                        descent algorithm based on ℓ1 -norm (also known as the coor-
+                                                                             dinate descent algorithm) [8]. According to this observation,
+   It seems natural to consider that the dynamics of a BF algo-
+                                                                             we have the following rule to choose the flipping position.
+rithm as a minimization process of a hidden objective function.
+                                                                                Definition 1 (Inversion function of the GDBF algorithm):
+This observation leads to a gradient descent formulation of BF
+                                                                             The single BF algorithm based on the inversion function
+algorithms.
+   The maximum likelihood (ML) decoding problem for the                                     (GD)      △           X Y
+                                                                                          ∆k      (x) = xk yk +                xj           (10)
+binary AWGN channel is equivalent to the problem of finding                                                          i∈M(k) j∈N (i)
+a (bipolar) codeword in C̃, which gives the largest correlation
+to a given received word y.P    Namely, the MLD rule can be                  is called the Gradient descent BF (GDBF) algorithm.
+written as x̂ = arg maxx∈C̃ nj=1 xi yi .                                     Thus, the decoding process of the GDBF algorithm can be seen
+   Based on this correlation decoding rule, we here define the               as the minimization process of −f (x) (it can be considered as
+following objective function:                                                the energy of the system) based bit-flipping gradient descent
+                         n           m
+                                                                             method.
+                     △ X            X     Y                                     It is interesting to see that the combination of the objective
+               f (x) =      xj yj +           xj .          (5)
+                                                                             function f˜(x) defined by
+                           i=1          i=1 j∈N (i)
+                                                                                                      n                  m
+The first term of the objective function corresponds to the                                     △
+                                                                                          f˜(x) = α
+                                                                                                      X                  X           Y
+                                                                                                            xj |yj | +         βi             xj   (11)
+correlation between a bipolar codeword and the received word,                                         i=1                i=1        j∈N (i)
+which should be maximized. The second term is the sum of the
+bipolar syndromes of x. If andP only ifQx ∈ C̃, then the second              and the argument on gradient descent presented above gives
+                                  m
+term has its maximum value i=1 j∈N (i) xj = m. Thus,                         the inversion functions of conventional algorithms such as the
+this term can be considered as a penalty term, which forces                  WBF algorithm (3) and the MWBF algorithm (4). However,
+x to be a valid codeword. Note that this objective function                  this objective function (11) looks less meaningful compared
+is a non-linear function and has many local maxima. These                    with the objective function (5). In other words, the inversion
+                                                                                        (GD)
+local maxima become a major source of sub-optimality of the                  function ∆k     (x) defined in (10) has a more natural interpre-
+                                                                                                                                 (W BF )
+GDBF algorithm presented later.                                              tation than those of the conventional algorithms: ∆k        (x)
+   1 When ∆ (x) is an integer-valued function, we need a tie-break rule to     2 There is a possibility that the objective function value may decrease
+             k
+resolve a tie.                                                               because the step size is fixed (such as single flip).
+                                                                                                                                            3
+
+
+                  (MW BF )
+in (3) and ∆k          (x) in (4). Actually, the new inversion                The flow of the multi GDBF algorithm is almost the same
+           (GD)
+function ∆k      (x) is not only natural but also effective in             as that of the previously presented GDBF algorithm. When it
+terms of bit error performance and convergence speed.                      is necessary to clearly distinguish two decoding algorithms,
+                                                                           the GDBF algorithm presented in the previous sub-subsection
+                                                                           is referred to as the single GDBF algorithm.
+C. Multi GDBF algorithm
+                                                                              In order to define the multi GDBF algorithm, we need
+   A decoding process of the GDBF algorithm can be regarded                to introduce new parameters θ and µ. The parameter θ is a
+as a maximization process of the objective function (5) in                 negative real number, which is called the inversion threshold.
+a gradient ascent manner. Thus, we can utilize the objective               The binary (0 or 1) variable µ, which is called the mode flag,
+function value in order to observe the convergence behavior.               is set to 0 at the beginning of the decoding process. Step 3
+For example, it is possible to monitor the value of the objective          of the BF algorithm should be replaced with the following
+function for each iteration. In the first several iterations,              multi-bit flipping procedure.
+the value increases as the number of iterations increases.
+However, the value eventually ceases to increase when the                         Step 3 Evaluate the value of the objective function,
+search point arrives at the nearest point in {+1, −1}n to the                            and let f1 := f (x). If µ = 0, then execute Sub-
+local maximum of the objective function. We can easily detect                            step 3-1 (multi-bit mode), else execute Sub-
+such convergence to a local maximum by observing the value                               step 3-2 (single-bit mode).
+of the objective function.                                                                 3-1 Flip all the bits satisfying
+   Both the BF algorithms reviewed in the previous section
+                                                                                                           (GD)
+and the GDBF algorithm flip only one bit for each iteration.                                             ∆k       <θ   (k ∈ [1, n]).
+In terms of the numerical optimization, in these algorithms,
+                                                                                                  Evaluate the value of the objective
+a search point moves towards a local maximum with a very
+                                                                                                  function again, and let f2 := f (x).
+small step (i.e., 1 bit flip) in order to avoid oscillation around
+                                                                                                  If f1 > f2 holds, then let µ = 1.
+the local maximum (See Fig.1 (A)). However, the small size
+                                                                                           3-2    Flip a single bit at the jth position,
+step leads to slower convergence to a local maximum. In
+                                                                                                  where
+general, compared with the min-sum algorithm, BF algorithms
+                                                                                                              △              (GD)
+(single flip/iteration) require a larger number of iterations to                                          j = arg min ∆k            .
+                                                                                                                   k∈[1,n]
+achieve the same bit error probability.
+   The multi bit flipping algorithm is expected to have a faster
+convergence speed than that of the single bit flipping algorithm              Usually, at the beginning of a decoding process, the ob-
+because of its larger step size. If the search point is close to           jective function value increases as the number of iterations
+a local maximum, a fixed large step is not suitable to find the            increases in the multi-bit mode, namely, f1 < f2 holds for the
+(near) local maximum point; it leads to oscillation behavior               first few iterations. When the search point eventually arrives
+of a multi-bit flipping BF algorithm (Fig.1(B)). We need to                at the point satisfying f1 > f2 , the bit flipping mode is
+adjust the step size dynamically from a large step size to a               changed from the multi-bit mode (µ = 0) to the single-bit
+small step size in an optimization process (Fig.1(C)).                     mode (µ = 1). This mode change means adjustment of the
+                                                                           step size, which helps a search point to converge to a local
+          Local maximum                                                    maximum when the search point is located close to the local
+                                                                           maximum.
+
+                                                                                    IV. B EHAVIOR OF THE GDBF ALGORITHMS
+                                     Oscillation
+                                     behavior                                 In this section, the behavior and decoding performance of
+                                                                           (single and multi) GF-BF algorithms obtained from computer
+                                                                           simulations are presented.
+                                                                              Figure 2 presents objective function values (5) as a function
+     (A) Single ﬂipping      (B) Multiple ﬂipping   (C) Multiple ﬂipping   of the number of iterations in the single and multi GDBF
+                                   (ﬁxed)                (dynamic)
+                                                                           processes. Throughout the present paper, a regular LDPC code
+  (A) converging but slow, (B) not converging but fast, (C)                with n = 1008, m = 504 (called PEGReg504x1008 in [9]) is
+                    converging and fast                                    assumed. The column weight of the code is 3. In both cases
+                                                                           (single and multi), we tested the same noise instance, and
+Fig. 1.   Convergence behavior
+                                                                           both algorithms output the correct codeword (i.e., successful
+                                                                           decoding).
+   The objective function is a useful guideline for adjusting                 In the case of the single GDBF-algorithm, the objective
+the step size (i.e., number of flipping bits). The multi GDBF              function value gradually increases as the number of iterations
+algorithm is a GDBF algorithm including the multi-bit flipping             grows in the first 50–60 iterations. After the slope, the incre-
+idea. In the following, we assume the inversion function                   ment of the objective function value eventually stops, and a
+  (GD)
+∆k     (x) defined by (10) (the inversion function for the                 flat part that corresponds to a local maximum appears. In the
+GDBF algorithm).                                                           flat part of the curves, the oscillation behavior of the objective
+                                                                                                                                                                                        4
+
+
+
+function value can be seen. Due to the constraint such that                                                 100
+                                                                                                                                                                  WBF, Lmax=100
+a search point x must lie in {+1, −1}, a GDBF process                                                            -1
+                                                                                                                                                                 MWBF, Lmax=100
+                                                                                                            10                                            single GD-BF, Lmax=100
+cannot find a true local maximum point (the point where the                                                                                                multi GD-BF, Lmax=100
+gradient of the objective function becomes a zero vector) of the                                                                                      Normalized min-sum, Lmax=5
+                                                                                                            10-2
+objective function. Thus, a search point moves around the local
+maximum point. This move causes the oscillation behavior
+
+
+
+
+                                                                                           Bit Error Rate
+                                                                                                            10-3
+observed in a single GDBF process. The curve corresponding
+to the multi GDBF algorithm shows much faster convergence                                                   10-4
+compared with the single GDBF algorithm. It takes only 15
+iterations for the search point to come very close to the local                                             10-5
+
+maximum point.
+                                                                                                            10-6
+
+                              1550
+                                                                       multi GD-BF                          10-7
+                                                                      single GD-BF                                    2           3       4          5            6         7       8
+                                                                                                                                                  SNR [dB]
+                              1500
+
+                                                                                           Fig. 3.   Bit error rate of GDBF algorithms: regular LDPC code
+Value of Objective Function
+
+
+
+
+                              1450
+                                                                                           (PEGReg504x1008[9])
+
+
+                              1400
+                                                                                           bellow those of WBF and MWBF algorithms. However, the
+                              1350                                                         improvement is relatively small compared with the regular
+                                                                                           case. This observation may imply that the advantage of GD-BF
+                              1300
+                                                                                           algorithm in BER depends on type of the code.
+
+                                                                                                            100
+                              1250                                                                                                                                WBF, Lmax=100
+                                     0   20    40                60        80        100                                                                         MWBF, Lmax=100
+                                               Number of Iterations                                              -1
+                                                                                                            10                                            single GD-BF, Lmax=100
+                                              SNR=4 dB                                                                                                     multi GD-BF, Lmax=100
+                                                                                                                                                      Normalized min-sum, Lmax=5
+                                                                                                            10-2
+Fig. 2. Objective function values in GDBF processes as a function of the
+number of iterations
+                                                                                           Bit Error Rate
+
+
+
+
+                                                                                                            10-3
+
+
+                                                                                                            10-4
+   Figure 3 presents the bit error curves of single and multi
+GDBF algorithms (Lmax = 100, θ = −0.6). As references,
+                                                                                                            10-5
+the curves for the WBF algorithm (Lmax = 100), the MWBF
+algorithms (Lmax = 100, α = 0.2), and the normalized min-                                                   10-6
+sum algorithm (Lmax = 5, scale factor 0.8) are included
+as well. The parameter Lmax denotes the maximum number                                                      10-7
+                                                                                                                      2       3       4       5              6        7         8   9
+of iterations for each algorithm. We can see that the GDBF                                                                                        SNR [dB]
+algorithms perform much better than the WBF and MWBF
+algorithms. For example, at BER = 10−6 , the multi GDBF                                    Fig. 4.    Bit error rate of GDBF algorithms: irregular LDPC code
+algorithm offers a gain of approximately 1.6 dB compared                                   (PEGirReg504x1008[9])
+with the MWBF algorithm. Compared with the single GDBF
+algorithm, the multi GDBF algorithm has a steeper slope in its                                In order to evaluate the convergence speed of BF algorithms,
+error curve. Unfortunately, there is still a large performance                             the average number of iterations is an appropriate measure.
+gap between the error curves of the normalized min-sum                                     Figure 5 shows the average number of iterations (as a function
+algorithm and the GDBF algorithms. The GDBF algorithm                                      of SNR) of the GDBF algorithms (single and multi), the WBF
+fails to decode when a search point is attracted to an unde-                               algorithm, and the MWBF algorithms. Note that the multi
+sirable local maximum of the objective function. This large                                GDBF algorithm certainly have a fast convergence property.
+performance gap suggests the existence of some local maxima                                Large gaps can be observed between the curve of the multi
+relatively close to a bipolar codeword, which degrades the                                 GDBF algorithm and the other curves.
+BER performance.
+   Figure 4 shows error curves for an irregular LDPC code.                                                                V. E SCAPE FROM A LOCAL MAXIMUM
+The code used in the simulation is an irregular code (called
+PEGirReg504x1008 in [9]) constructed based on PEG con-                                     A. Effect of non-codeword local maxima
+struction. The same decoding algorithms (with same param-                                     As we have discussed, a decoding failure occurs when a
+eter) appeared in Fig.3 have been tested. As well as the                                   search point is captured by a local maximum, which is not a
+regular case, the error curves of GD-BF algorithms come                                    transmitted codeword. Thus, it is desirable to know the effect
+                                                                                                                                                                                       5
+
+
+                                100
+                                                                                                     WBF
+                                                                                                                         small syndrome weight. The sub-optimality of BF-algorithms
+                                90                                                                  MWBF                 compared with sum-product and min-sum algorithms comes
+                                                                                             single GD-BF
+                                80                                                            multi GD-BF
+                                                                                                                         from the effect of these numerous local maxima.
+ Average number of iterations
+
+
+
+
+                                70
+
+                                60
+                                                                                                                         B. GDBF algorithm with escape process
+                                50                                                                                          Since the weight of the final position of a search point
+                                                                                                                         is so small, a small perturbation of a captured search point
+                                40
+                                                                                                                         appears to be helpful for the search point to escape from
+                                30                                                                                       an undesirable local maximum. We can expect that such a
+                                20                                                                                       perturbation process improves the BER performance of BF
+                                10
+                                                                                                                         algorithms.
+                                                                                                                            One of the simplest ways to add a perturbation on a trapped
+                                 0
+                                      2    2.5    3        3.5        4         4.5     5    5.5     6        6.5        search point is to switch the flip mode from the single-bit
+                                                                          SNR [dB]
+                                                                                                                         mode to the multi-bit mode with an appropriate threshold
+                                                             Lmax = 100                                                  forcibly when the search point arrives at a non-codeword local
+Fig. 5.                               Average number of iterations                                                       maximum. This additional process is called the escape process.
+                                                                                                                         In general, the escape process reduces the object function
+                                                                                                                         value, i.e., the search point moves downwards in the energy
+                                                                                                                         landscape. After the escape process, the search point again
+of such local maxima. Figure 6 presents three trajectories                                                               begins to climb a hill, which may be different from the trapped
+of weight and syndrome weight of a search point in three                                                                 point.
+decoding processes corresponding to decoding failure. The                                                                   We here modify the multi GDBF algorithm by incorporating
+                                                         △
+weight of a search point x is defined by w1 (x) = |{j ∈                                                                  two thresholds: θ1 and θ2 . The threshold θ1 is the threshold
+[1, n] : xj = −1}|. In ansimilar way, the syndrome weight o of x                                                         constant used in the multi-bit mode at the beginning of the
+                    △
+                                                                                                                         decoding process. After several iterations, the multi-bit mode
+                                       Q
+is given by w2 (x) = i ∈ [1, m] : j∈N (i) xj = −1 . We
+assume that the all-1 bipolar codeword (i.e., all-zero binary                                                            is changed to single-bit mode and then the search point may
+codeword) is transmitted without loss of generality.                                                                     eventually arrive at the non-codeword local maximum. In such
+   We can obtain the following observation from Fig.6: (i) the                                                           a case, the decoder changes its mode to the multi-bit mode
+decoding process starts from the position at which both w1 (x)                                                           (i.e., µ = 0) with threshold θ2 . Thus, the threshold θ2 can be
+and w2 (x) are large, (ii) w1 (x) and w2 (x) decreases as the                                                            regarded as the threshold for downward movement. Although
+iteration proceeds, and (iii) the final states of the search point                                                       θ2 can be a constant value, in terms of the BER performance,
+have a relatively small value of w1 (x) and w2 (x).                                                                      it is advantageous to choose randomly4. In other words, θ2
+                                                                                                                         can be a random variable. After the downward move (just one
+                                100                                                                                      iteration), the decoder changes the threshold to θ1 again. The
+                                                                                                                         above process continues until the parity check condition holds
+                                                                                                                         or the number of iterations becomes Lmax . Figure 7 illustrates
+                                80                                                                                       the idea of the escape process.
+ Syndrome weight of x
+
+
+
+
+                                60                                                                                                                                     Transmitted
+                                                                                                                                                                        codeword
+                                40
+
+
+                                                                                                                                                    Trapped
+                                20                                                                                                                search point
+                                                                                                                                                              Downward
+                                                                                                                                        Single-bit              move
+                                 0                                                                                                        mode
+                                      0      5        10         15           20        25     30        35         40
+                                                                          Weight of x
+
+
+Fig. 6.                               Trajectories of weight and syndrome weight of search points
+                                                                                                                                    Multi-bit
+                                                                                                                                     mode
+
+   Based on these observations, we may be able to conjecture
+that a search point is finally trapped by a local maximum close
+                                                                                                                         Fig. 7.   Idea of escape process
+to a near codeword in high probability3. Near codewords [10]
+are bipolar codewords of C̃ that have both small weight and
+                         3 Note that other experiments also support this conjecture.                                       4 This fact is observed from some experiments.
+                                                                                                                                                                  6
+
+
+
+C. Simulation results                                                                  Acknowledgement
+   Figure 8 shows the BER curve of such a decoding algorithm                             The present study was supported in part by the Ministry of
+(labeled ’multi GDBF with escape’). In this simulation, we                             Education, Science, Sports, and Culture of Japan through a
+used the parameters: θ1 = −0.7, θ2 = 1.7 + α where α is a                              Grant-in-Aid for Scientific Research on Priority Areas (Deep-
+Gaussian random number with mean zero and variance 0.01.                               ening and Expansion of Statistical Informatics) 180790091 and
+These parameters have been obtained an ad hoc optimization at                          by a research grant from the Storage Research Consortium
+SNR = 4dB. We can see that the BER curve of multi GDBF                                 (SRC).
+with escape (with Lmax = 300) is much steeper than that
+of the naive multi GDBF algorithm. At BER = 10−5 , multi
+                                                                                                                    R EFERENCES
+GDBF with escape achieves a gain of almost 1.5 dB compared
+with the naive multi GDBF algorithm. The average number                                 [1] R.G.Gallager, ”Low-Density Parity-Check Codes”, in Research Mono-
+                                                                                            graph series. Cambridge, MIT Press,1963.
+of iterations of multi GDBF with escape is approximately                                [2] Y.Kou, S.Lin, and M.P.C Fossorier, ”Low-density parity-check codes
+25.6 at SNR = 4 dB. This result implies that the perturbation                               based on finite geometries: a rediscovery and new results,” IEEE Trans.
+can actually save some trapped search points to converge to                                 Inform. Theory, pp.2711–2736, vol.47, Nov. 2001.
+                                                                                        [3] J.Zhang, and M.P.C.Fossorier, ”A modified weighted bit-flipping decod-
+the desirable local maximum corresponding to the transmitted                                ing of low-density parity-check codes,” IEEE Communications Letters,
+codeword. It is an interesting open problem to optimize the                                 pp.165–167, vol.8, Mar. 2004.
+flipping schedule to narrow the gap between the min-sum BER                             [4] M.Jiang, C.Zhao, Z.Shi, and Y.Chen, “An improvement on the modified
+                                                                                            weighted bit flipping decoding algorithm for LDPC codes,” IEEE
+curve and the GDBF BER curve.                                                               Communications Letters , vol.9, no.9, pp.814–816, 2005.
+                                                                                        [5] F. Guo, and H. Henzo, “Reliability ratio based weighted bit-flipping
+                                                                                            decoding for low-dencity parity-check codes,” IEEE Electronics Letters
+                  100
+                                               multi GD-BF with escape, Lmax=300            , vol.40, no.21, pp.1356–1358, 2004.
+                                                          multi GD-BF, Lmax=100
+                                                      Normalized min-sum, Lmax=5        [6] C. H. Lee, and W. Wolf, “Implemntation-efficient reliability ratio based
+                  10-1
+                                                   Normalized min-sum, Lmax=100             weighted bit-flipping decoding for LDPC codes,” IEEE Electronics
+                                                                  WBF, Lmax=100
+                                                                                            Letters , vol.41, no.13, pp.755–757, 2005.
+                                                                                        [7] A. Nouh and A. H Banihashemi, “Bootstrap decoding of low-density
+                  10-2                                                                      parity check matrix,” IEEE Communications Letters , vol.6, no.9,
+                                                                                            pp.391–393, 2002.
+ Bit Error Rate
+
+
+
+
+                                                                                        [8] S.Boyd and L. Vandenberghe, ”Convex optimization,” Cambridge Uni-
+                  10-3                                                                      versity Press, 2004.
+                                                                                        [9] D. J. C. MacKay “Encyclopedia of sparse graph codes, ”
+                                                                                            online: http://www.inference.phy.cam.ac.uk/mackay/codes/data.html
+                  10-4                                                                 [10] D.J.C. MacKay and M.S. Postol, ”Weaknesses of Margulis and
+                                                                                            Ramanujan-Margulis low-density parity-check codes,” Electronic Notes
+                                                                                            in Computer Science, 2003.
+                  10-5
+
+
+
+                  10-6
+                         1     2         3         4            5           6      7
+                                                SNR [dB]
+
+
+Fig. 8.            Bit error rate of the GDBF algorithm with the escape process
+
+
+
+
+                                    VI. C ONCLUSION
+
+   This paper presents a class of BF algorithms based on the
+gradient descent algorithm. GDBF algorithms can be regarded
+as a maximization process of the object function using bit-
+flipping gradient descent method (i.e., bit-flipping dynamics
+which minimizes the energy −f (x)). The gradient descent
+formulation naturally introduces an energy landscape of the
+state-space of the BF-decoder. The viewpoint obtained by this
+formulation brings us a new way to understand convergence
+behaviors of BF algorithms. Furthermore this viewpoint is also
+useful to design improved decoding algorithms such as the
+multi GDBF algorithm and the GDBF algorithm with escape
+process from an undesired local maximum. The GDBF algo-
+rithm with escape process performs very well compared with
+known BF algorithms. One lesson we have learned from this
+result is that fine control on flipping schedule is indispensable
+to improve decoding performance of BF algorithms.
+
