@@ -54,7 +54,7 @@ class LdpcExperimentSettings:
         # Check that data directory is correct
         dir_exists(self.data_dir)
         # Check channel parameters
-        if self.channel_output not in ['soft', 'hard']:
+        if self.channel_output not in ['soft', 'hard', 'received']:
             raise ValueError(f'Channel output {self.channel_output} is not supported')
         codec_instance = instantiate_codec(**self.codec)
 
@@ -113,8 +113,12 @@ class LdpcExperimentInstance:
         Run AWGN channel
         """
         in_ber, in_ser = self.channel.run(snr_db, rng)
-        if self.is_channel_hard:
-            llr_channel = np.sign(llr_channel)
+        if self.settings.channel_output == 'hard':
+            self.llr_in[:] = np.sign(self.llr_in)
+
+        elif self.settings.channel_output == 'received':
+            sigma_noise = self.channel.modulation.sigma_noise(snr_db)
+            self.llr_in[:] *= sigma_noise ** 2 / 2
         return in_ber, in_ser
 
     def run(self, snr_db, rng):

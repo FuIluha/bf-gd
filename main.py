@@ -19,19 +19,19 @@ def compile_all():
     lbc_compile()  # Low-complexity encoder
 
 
-def single_run():
+def single_run(config_filename='experiment.json', snr_db=-8.0):
     """
     This function instantiates the experiment and performs a single test.
     When creating a new experiment, check that this run is succesful
     """
     # Works only with single experiment (do not specify lists of parameters)
-    config = load_json('experiment.json')
+    config = load_json(config_filename)
     # Create experiment settings
     exp_settings = LdpcExperimentSettings(**config['experiment'])
     # Create experiment instance
     exp_instance = LdpcExperimentInstance(exp_settings)
     # Perform single run and print the output
-    data = exp_instance.run(-8.0, np.random.default_rng(seed=1))
+    data = exp_instance.run(snr_db, np.random.default_rng(seed=1))
     print(data)
 
 

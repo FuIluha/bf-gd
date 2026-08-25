@@ -1,4 +1,5 @@
 galois
 -r ./lbc_encoder/requirements.txt
 -r ./ldpc_soft_py/requirements.txt
+-r ./ldpc_bf_py/requirements.txt
 -r ./simulator_awgn_python/requirements.txt

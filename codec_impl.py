@@ -10,8 +10,9 @@ from simulator_awgn_python.channel import random_bits
 
 from lbc_encoder.lbc_encoder import LBCEncoder
 
-from ldpc_soft_py.bin_ldpc_soft import Alist
+from ldpc_common.alist import Alist
 from ldpc_soft_py.bin_ldpc_soft import BinLdpcSoftDecoder, BinGldpcSoftDecoder
+from ldpc_py import create_decoder
 
 
 class BinaryCodecBase:
@@ -311,6 +312,90 @@ class BinaryLdpcSoftCodec(BinarySoftCodecBase):
     def __str__(self):
         msg = 'Binary LDPC code with soft decoding algorithm\n'
         return msg + super().__str__()
+
+
+class BinaryLdpcCodec(BinaryCodecBase):
+    """Adapter simulator - decoders."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.algorithm = kwargs.get("algorithm")
+        self.llr_type = kwargs.get("llr_type", "float32")
+        self.n_iterations = kwargs.get("n_iterations")
+        self.decoder_params = kwargs.get("decoder_params", {})
+
+        if not isinstance(self.algorithm, str):
+            raise ValueError(
+                "Decoding algorithm must be specified"
+            )
+
+        if self.llr_type not in ("float32", "float64"):
+            raise ValueError(
+                f"LLR type {self.llr_type!r} is not supported"
+            )
+
+        if (
+            not isinstance(self.n_iterations, int)
+            or self.n_iterations <= 0
+        ):
+            raise ValueError(
+                "The number of iterations must be positive"
+            )
+
+        if not isinstance(self.decoder_params, dict):
+            raise ValueError(
+                "Decoder parameters must be a dictionary"
+            )
+
+        self.decoder_impl = create_decoder(
+            self.algorithm,
+            self.alist_path,
+            block_length=self.pcm_shape[1],
+            n_checks=self.pcm_shape[0],
+            n_iterations=self.n_iterations,
+            is_systematic=self.is_systematic,
+            **self.decoder_params,
+        )
+
+    def get_inf_bits_count(self):
+        return self.pcm_shape[1] - self.pcm_shape[0]
+
+    def decode(self, llr_in, llr_out):
+        return self.decoder_impl.decode(llr_in, llr_out)
+
+    def is_azcw(self):
+        return not hasattr(self, "encoder")
+
+    def get_filename_template(self):
+        return (
+            "bin_ldpc_hard_"
+            + super().get_filename_template()
+            + f"{self.algorithm}_"
+            + f"iter_{self.n_iterations}_"
+            + f"llr_{self.llr_type}"
+        )
+
+    def get_title_template(self):
+        return (
+            "Binary LDPC, hard decoding, "
+            + super().get_title_template()
+            + f", {self.algorithm}"
+            + f", {self.n_iterations} iterations"
+        )
+
+    def __str__(self):
+        msg = "Binary LDPC code with decoding algorithm\n"
+        msg += super().__str__() + "\n"
+        msg += "Decoder-specific parameters:\n"
+        msg += f"  Decoding algorithm:        {self.algorithm!r}\n"
+        msg += f"  The number of iterations:  {self.n_iterations}\n"
+        msg += f"  LLR type:                  {self.llr_type!r}"
+
+        if self.decoder_params:
+            msg += f"\n  Decoder parameters:        {self.decoder_params}"
+
+        return msg
 
 
 def instantiate_codec(**kwargs):

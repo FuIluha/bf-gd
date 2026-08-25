@@ -8,7 +8,7 @@ import argparse
 import numpy as np
 import galois
 
-from ldpc_soft_py.bin_ldpc_soft import Alist
+from ldpc_common.alist import Alist
 from ldpc_soft_py.bin_pcm_tools import expand_pcm
 
 CODES_DIR = 'codes'
