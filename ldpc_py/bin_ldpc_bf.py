@@ -7,7 +7,7 @@ class BinLdpcBfDecoder(BinLdpcDecoderBase):
         super().__init__(alist_filename, **kwargs)
         self.variable_node_degrees = np.sum(self.pcm, axis=0)
 
-    def decode(self, llr_in, llr_out):
+    def decode(self, llr_in, llr_out, rng=None):
         decoded_bits = (llr_in < 0).astype(np.uint8)
         
         for iteration in range(self.n_iterations):

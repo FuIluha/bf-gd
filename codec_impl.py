@@ -79,11 +79,12 @@ class BinaryCodecBase:
         """
         raise NotImplementedError('Must be implemented by subclass')
 
-    def decode(self, llr_in, llr_out):
+    def decode(self, llr_in, llr_out, rng=None):
         """
         Run decoder implementation
         :param llr_in input LLR vector with puncturing being applied (if needed)
         :param llr_out output LLR vector placeholder
+        :param rng random
         :return The number of decoding iterations
         """
         raise NotImplementedError('Must be implemented by subclass')
@@ -170,7 +171,7 @@ class BinarySoftCodecBase(BinaryCodecBase):
         """
         raise NotImplementedError('Must be implemented by subclass')
 
-    def decode(self, llr_in, llr_out):
+    def decode(self, llr_in, llr_out, rng=None):
         """
         Run decoder implementation
         """
@@ -251,7 +252,7 @@ class BinaryGldpcSoftCodec(BinarySoftCodecBase):
         """
         return self.pcm_shape[1] - 2 * self.pcm_shape[0]
 
-    def decode(self, llr_in, llr_out):
+    def decode(self, llr_in, llr_out, rng=None):
         """
         Decoding function implementation
         """
@@ -290,7 +291,7 @@ class BinaryLdpcSoftCodec(BinarySoftCodecBase):
         """
         return self.pcm_shape[1] - self.pcm_shape[0]
 
-    def decode(self, llr_in, llr_out):
+    def decode(self, llr_in, llr_out, rng=None):
         """
         Decoding function implementation
         """
@@ -361,8 +362,8 @@ class BinaryLdpcCodec(BinaryCodecBase):
     def get_inf_bits_count(self):
         return self.pcm_shape[1] - self.pcm_shape[0]
 
-    def decode(self, llr_in, llr_out):
-        return self.decoder_impl.decode(llr_in, llr_out)
+    def decode(self, llr_in, llr_out, rng=None):
+        return self.decoder_impl.decode(llr_in, llr_out, rng=rng)
 
     def is_azcw(self):
         return not hasattr(self, "encoder")
