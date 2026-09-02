@@ -22,7 +22,7 @@ class BinLdpcMsDecoder(BinLdpcDecoderBase):
             np.cumsum(check_degrees),
         ))
 
-    def decode(self, llr_in, llr_out):
+    def decode(self, llr_in, llr_out, rng=None):
         def sign(a):
             return -1.0 if a < 0 else 1.0
 

@@ -24,7 +24,7 @@ class BinLdpcDecoderBase:
                 "n_iterations must be positive"
             )
 
-    def decode(self, llr_in, llr_out):
+    def decode(self, llr_in, llr_out, rng=None):
         """Decode llr_in into llr_out and return iteration count"""
         raise NotImplementedError
 

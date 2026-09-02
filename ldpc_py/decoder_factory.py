@@ -1,11 +1,13 @@
 from .bin_ldpc_bf import BinLdpcBfDecoder
 from .bin_ldpc_ms import BinLdpcMsDecoder
 from .bin_ldpc_mgdbf import BinLdpcMgdbfDecoder
+from .bin_ldpc_pmgdbf import BinLdpcPmgdbfDecoder
 
 _DECODER_TYPES = {
     "bit-flipping": BinLdpcBfDecoder,
     "min-sum": BinLdpcMsDecoder,
     "multi gradient descent bit-flipping": BinLdpcMgdbfDecoder,
+    "probabilistic momentum gradient descent bit-flipping": BinLdpcPmgdbfDecoder,
 }
 
 def create_decoder(algorithm, alist_filename, **kwargs):
