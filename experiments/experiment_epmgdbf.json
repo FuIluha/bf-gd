@@ -10,9 +10,8 @@
       "n_iterations": 300,
       "llr_type": "float32",
       "decoder_params": {
-        "delta": 1,
-        "delta_e": 1.6,
-        "lambd": -0.2,
+        "delta": 0.90,
+        "delta_e": 1.1,
         "alpha": 1.8,
         "p": 0.9,
         "rho": [2,2,2,2,2,1,1],

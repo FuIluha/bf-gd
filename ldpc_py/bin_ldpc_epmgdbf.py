@@ -7,7 +7,6 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
         super().__init__(alist_filename, **kwargs)
         self.delta = kwargs["delta"]
         self.delta_e = kwargs["delta_e"]
-        self.alpha = kwargs["alpha"]
         self.p = kwargs["p"]
         self.lambd = kwargs["lambd"]
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
@@ -87,7 +86,10 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
         if rng is None:
             rng = np.random.default_rng()
         y = llr_in.copy()
-        x = (2 * (y >= 0) - 1).astype(np.int8)  # sign, zero is positive
+        x = np.zeros(self.block_length)
+        x[y >= 0.5] = 1
+        x[y <= -0.5] = -1
+
         l = np.repeat(self.L + 1, self.block_length)
         for iteration in range(self.n_iterations): # iteration loop
             check_syndromes = self.bpsk_syndrome(x) # syndrome
@@ -102,7 +104,7 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
                 minlength=self.block_length,
             )
             l = np.minimum(l, self.L) + 1
-            E = self.alpha * x * y + incident_syndrome_sums + self.rho[l - 1] - self.lambd * (x == 0) # local energy computation
+            E = self.alpha * x * y + incident_syndrome_sums + self.rho[l - 1] # local energy computation
 
             E_th = np.min(E) + self.delta
             E_th_e = np.min(E) + self.delta_e
