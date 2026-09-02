@@ -17,6 +17,26 @@ The JSON file specifying code contains the following parameters:
 - `inf_bits` specifies indices of information bits. If this parameter is missing, then the output bit error rate will be evaluated using a whole codeword.
 
 See [example.sh](example.sh) for more details.
+
+## One-command Slurm run with a standalone dashboard
+
+Run the launcher directly on the login server (do not prefix it with `sbatch`):
+
+```console
+./run.sh experiments/experiment_pmgdbf.json
+```
+
+It starts or reuses the dashboard on port 8888 and submits the simulation to
+Slurm. The command prints the fixed dashboard URL to open from the institute's
+local network. The dashboard reads results from the shared `data` directory and
+continues running when the Slurm job finishes.
+
+The experiment JSON is a positional argument. To select another config or port:
+
+```console
+DASHBOARD_PORT=8890 ./run.sh experiments/experiment.json
+```
+
 ## Tools
 ### 5G LDPC constructor
 See [ldpc_5g.py](ldpc_5g.py) script.

@@ -7,7 +7,7 @@
       "algorithm": "probabilistic momentum gradient descent bit-flipping",
       "src_dir": "codes",
       "code": "ldpc_savin_4_8_12_24_Zc54.json",
-      "n_iterations": 100,
+      "n_iterations": 300,
       "llr_type": "float32",
       "decoder_params": {
         "delta": 1,
@@ -19,10 +19,10 @@
     }
   },
   "simulation": {
-    "n_workers": 8,
-    "snr_range": "-10:0.05:2",
+    "n_workers": 128,
+    "snr_range": "-1:0.05:0.8",
     "max_errors": 200,
-    "min_error_prob": 0.0001,
+    "min_error_prob": 0.0000001,
     "chunk_size": 10,
     "max_experiments": 10000000,
     "snr_precision": 3,
