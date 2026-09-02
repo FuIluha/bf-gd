@@ -100,7 +100,6 @@ server_ip=${server_ip:-127.0.0.1}
 
 job_id=$(sbatch \
     --parsable \
-    --export="ALL,LDPC_CONFIG=$config_file" \
     "$project_dir/run.sh")
 
 echo "Slurm job submitted: $job_id"
