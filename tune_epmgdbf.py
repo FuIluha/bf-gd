@@ -11,12 +11,16 @@ from pathlib import Path
 import numpy as np
 
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
+from ldpc_py.cpp_bin_ldpc_epmgdbf import lib_compile as cpp_epmgdbf_compile
 from simulator_awgn_python.tools import load_json
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_epmgdbf.json"
+DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_epmgdbf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params.txt"
+
+PYTHON_ALGORITHM = "erasure probabilistic momentum gradient descent bit-flipping"
+CPP_ALGORITHM = "cpp erasure probabilistic momentum gradient descent bit-flipping"
 
 DEFAULT_DELTAS = np.round(np.arange(0.8, 1.201, 0.05), 2)
 DEFAULT_DELTA_ES = np.round(np.arange(0.9, 1.301, 0.05), 2)
@@ -132,23 +136,14 @@ def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
     codec = experiment["codec"]
-    if codec.get("algorithm") != (
-        "erasure probabilistic momentum gradient descent bit-flipping"
-    ):
+    if codec.get("algorithm") not in (PYTHON_ALGORITHM, CPP_ALGORITHM):
         raise ValueError("the selected config does not use the EPMGDBF decoder")
     return experiment, config.get("simulation", {})
 
 
 def parameter_grid(args, base_params):
     rho_profiles = args.rho_profiles or [tuple(base_params["rho"])]
-    baseline = {
-        "delta": float(base_params["delta"]),
-        "delta_e": float(base_params["delta_e"]),
-        "alpha": float(base_params["alpha"]),
-        "p": float(base_params["p"]),
-        "rho": list(base_params["rho"]),
-        "L": int(base_params["L"]),
-    }
+    baseline = copy.deepcopy(base_params)
 
     candidates = [baseline]
     for delta, delta_e, alpha, probability, rho in itertools.product(
@@ -161,16 +156,16 @@ def parameter_grid(args, base_params):
         # E_th_e is the wider erasure threshold and must not be below E_th.
         if delta_e < delta:
             continue
-        candidates.append(
-            {
-                "delta": delta,
-                "delta_e": delta_e,
-                "alpha": alpha,
-                "p": probability,
-                "rho": list(rho),
-                "L": len(rho),
-            }
-        )
+        candidate = copy.deepcopy(base_params)
+        candidate.update({
+            "delta": delta,
+            "delta_e": delta_e,
+            "alpha": alpha,
+            "p": probability,
+            "rho": list(rho),
+            "L": len(rho),
+        })
+        candidates.append(candidate)
 
     unique_candidates = []
     seen = set()
@@ -280,6 +275,8 @@ def main():
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
+    if base_experiment["codec"]["algorithm"] == CPP_ALGORITHM:
+        cpp_epmgdbf_compile()
     base_params = base_experiment["codec"]["decoder_params"]
     candidates = parameter_grid(args, base_params)
     if args.max_configs is not None:

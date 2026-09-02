@@ -4,7 +4,7 @@
     "channel_output": "received",
     "codec": {
       "type": "BinaryLdpcCodec",
-      "algorithm": "erasure probabilistic momentum gradient descent bit-flipping",
+      "algorithm": "cpp erasure probabilistic momentum gradient descent bit-flipping",
       "src_dir": "codes",
       "code": "ldpc_savin_4_8_12_24_Zc54.json",
       "n_iterations": 300,
@@ -13,9 +13,9 @@
         "delta": 1,
         "delta_e": 1,
         "alpha": 1.7,
-        "zeros_in_init": 1,
+        "zeros_in_init": true,
         "p": 0.9,
-        "rho": [2,2,2,2,2,1,1],
+        "rho": [2, 2, 2, 2, 2, 1, 1],
         "L": 7
       }
     }

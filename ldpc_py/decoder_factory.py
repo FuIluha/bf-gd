@@ -3,6 +3,7 @@ from .bin_ldpc_ms import BinLdpcMsDecoder
 from .bin_ldpc_mgdbf import BinLdpcMgdbfDecoder
 from .bin_ldpc_pmgdbf import BinLdpcPmgdbfDecoder
 from .bin_ldpc_epmgdbf import BinLdpcEpmgdbfDecoder
+from .cpp_bin_ldpc_epmgdbf import CppBinLdpcEpmgdbfDecoder
 
 _DECODER_TYPES = {
     "bit-flipping": BinLdpcBfDecoder,
@@ -10,6 +11,7 @@ _DECODER_TYPES = {
     "multi gradient descent bit-flipping": BinLdpcMgdbfDecoder,
     "probabilistic momentum gradient descent bit-flipping": BinLdpcPmgdbfDecoder,
     "erasure probabilistic momentum gradient descent bit-flipping": BinLdpcEpmgdbfDecoder,
+    "cpp erasure probabilistic momentum gradient descent bit-flipping": CppBinLdpcEpmgdbfDecoder,
 }
 
 def create_decoder(algorithm, alist_filename, **kwargs):

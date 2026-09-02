@@ -6,6 +6,7 @@ import numpy as np
 
 from lbc_encoder.lbc_encoder import lib_compile as lbc_compile
 from ldpc_soft_py.bin_ldpc_soft import lib_compile as ldpc_compile
+from ldpc_py.cpp_bin_ldpc_epmgdbf import lib_compile as cpp_epmgdbf_compile
 from simulator_awgn_python.channel import lib_compile as chan_compile
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings, LdpcDataEntry
 from simulator_awgn_python.tools import load_json
@@ -16,6 +17,7 @@ def compile_all():
     """
     chan_compile()
     ldpc_compile()  # LDPC codec
+    cpp_epmgdbf_compile()  # C++ EPMGDBF decoder
     lbc_compile()  # Low-complexity encoder
 
 
