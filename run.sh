@@ -21,35 +21,38 @@ config_file=${LDPC_CONFIG:-experiments/experiment_pmgdbf.json}
 dashboard_port=${DASHBOARD_PORT:-8888}
 python_bin="$project_dir/.venv/bin/python3"
 
-load_python_module() {
+prepare_python() {
+    if [[ -x "$python_bin" ]] && "$python_bin" --version >/dev/null 2>&1; then
+        return
+    fi
+
     if command -v module >/dev/null 2>&1; then
-        module purge
-        module load python/3.12.3
+        module load python/3.12.3 >/dev/null 2>&1 || true
+    fi
+
+    if [[ ! -x "$python_bin" ]] || ! "$python_bin" --version >/dev/null 2>&1; then
+        echo "Working Python interpreter not found: $python_bin" >&2
+        echo "Create .venv and install requirements before running this script." >&2
+        exit 1
     fi
 }
 
 # This branch is executed by Slurm after the launcher submits this same file.
 if [[ -n "${SLURM_JOB_ID:-}" ]]; then
     cd "$project_dir"
-    load_python_module
+    prepare_python
     exec srun "$python_bin" main.py -c "$config_file" --no-run-plots
 fi
 
 cd "$project_dir"
 mkdir -p logs
 
-if [[ ! -x "$python_bin" ]]; then
-    echo "Python virtual environment not found: $python_bin" >&2
-    echo "Create .venv and install requirements before running this script." >&2
-    exit 1
-fi
-
 if [[ ! -f "$config_file" ]]; then
     echo "Experiment config not found: $project_dir/$config_file" >&2
     exit 1
 fi
 
-load_python_module
+prepare_python
 
 dashboard_url="http://127.0.0.1:$dashboard_port"
 dashboard_log="$project_dir/logs/dashboard.log"
