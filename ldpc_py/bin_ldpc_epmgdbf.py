@@ -7,6 +7,7 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
         super().__init__(alist_filename, **kwargs)
         self.delta = kwargs["delta"]
         self.delta_e = kwargs["delta_e"]
+        self.alpha = kwargs["alpha"]
         self.p = kwargs["p"]
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
         self.L = kwargs["L"]
