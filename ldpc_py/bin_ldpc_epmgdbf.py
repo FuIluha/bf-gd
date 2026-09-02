@@ -8,7 +8,6 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
         self.delta = kwargs["delta"]
         self.delta_e = kwargs["delta_e"]
         self.p = kwargs["p"]
-        self.lambd = kwargs["lambd"]
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
         self.L = kwargs["L"]
 
