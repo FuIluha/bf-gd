@@ -6,8 +6,10 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.delta = kwargs["delta"]
+        self.delta_e = kwargs["delta_e"]
         self.alpha = kwargs["alpha"]
         self.p = kwargs["p"]
+        self.lambd = kwargs["lambd"]
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
         self.L = kwargs["L"]
 
@@ -41,6 +43,44 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
             self.check_offsets[:-1],
         )
 
+    def extrinsic_syndrome_sums(self, x):
+        edge_values = x[self.edge_vn]
+        nonzero_edge_values = np.where(edge_values == 0, 1, edge_values)
+
+        check_nonzero_products = np.multiply.reduceat(
+            nonzero_edge_values,
+            self.check_offsets[:-1],
+        )
+        check_erasure_counts = np.add.reduceat(
+            (edge_values == 0).astype(np.int32),
+            self.check_offsets[:-1],
+        )
+
+        edge_erasure_counts = check_erasure_counts[self.edge_cn]
+        edge_nonzero_products = check_nonzero_products[self.edge_cn]
+
+        edge_messages = np.zeros(self.edges_count, dtype=np.int8)
+
+        no_erasure_mask = edge_erasure_counts == 0
+        edge_messages[no_erasure_mask] = (
+            edge_nonzero_products[no_erasure_mask]
+            * edge_values[no_erasure_mask]
+        )
+
+        single_erasure_mask = (
+            (edge_erasure_counts == 1)
+            & (edge_values == 0)
+        )
+        edge_messages[single_erasure_mask] = edge_nonzero_products[
+            single_erasure_mask
+        ]
+
+        return np.bincount(
+            self.edge_vn,
+            weights=edge_messages,
+            minlength=self.block_length,
+        )
+
 
     
     def decode(self, llr_in, llr_out, rng=None):
@@ -62,23 +102,34 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
                 minlength=self.block_length,
             )
             l = np.minimum(l, self.L) + 1
-            E = self.alpha * x * y + incident_syndrome_sums + self.rho[l - 1] # local energy computation
+            E = self.alpha * x * y + incident_syndrome_sums + self.rho[l - 1] - self.lambd * (x == 0) # local energy computation
 
             E_th = np.min(E) + self.delta
+            E_th_e = np.min(E) + self.delta_e
             rand = rng.random(self.block_length)
             mask = (E <= E_th) & (rand < self.p)
             bit_mask = mask & (x != 0)
             erasure_mask = mask & (x == 0)
 
-            x[bit_mask] = 0
-            x[erasure_mask] = np.sign(incident_syndrome_sums[erasure_mask])
+            has_erasure_updates = np.any(erasure_mask)
+            if has_erasure_updates:
+                extrinsic_syndrome_sums = self.extrinsic_syndrome_sums(x)
 
+            x[bit_mask] *= -1 # bit-flipping
+            if has_erasure_updates:
+                x[erasure_mask] = np.sign(
+                    extrinsic_syndrome_sums[erasure_mask]
+                )
             l[mask] = 0
+
+            rand = rng.random(self.block_length)
+            mask = (E > E_th) & (E <= E_th_e) & (rand < self.p)
+            bit_mask = mask & (x != 0)
+            erasure_mask = mask & (x == 0)
+            x[bit_mask] = 0
 
         llr_out[:] = x
         return self.n_iterations
-
-
 
 
 
