@@ -19,7 +19,7 @@
     }
   },
   "simulation": {
-    "n_workers": 8,
+    "n_workers": 128,
     "snr_range": "-1:0.05:0.8",
     "max_errors": 200,
     "min_error_prob": 0.0001,

@@ -3,6 +3,7 @@
 import argparse
 import dataclasses
 import multiprocessing as mp
+import signal
 
 from ldpc_experiment import LdpcExperimentSettings
 from simulator_awgn_python.live_plot import PlotServer
@@ -41,6 +42,11 @@ def main():
     settings = Settings(args.config, LdpcExperimentSettings)
     processes = []
     plot_index = 0
+
+    def stop_server(_signum, _frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, stop_server)
 
     try:
         while settings.remaining():

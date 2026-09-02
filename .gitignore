@@ -1,6 +1,8 @@
 .DS_Store
 .idea
 *.log
+logs/dashboard.config
+logs/dashboard.pid
 __pycache__
 data/*.pickle
 data/*.lock

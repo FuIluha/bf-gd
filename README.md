@@ -23,7 +23,7 @@ See [example.sh](example.sh) for more details.
 Run the launcher directly on the login server (do not prefix it with `sbatch`):
 
 ```console
-./run.sh
+./run.sh experiments/experiment_pmgdbf.json
 ```
 
 It starts or reuses the dashboard on port 8888 and submits the simulation to
@@ -31,10 +31,10 @@ Slurm. The command prints the fixed dashboard URL to open from the institute's
 local network. The dashboard reads results from the shared `data` directory and
 continues running when the Slurm job finishes.
 
-To select another experiment config or port:
+The experiment JSON is a positional argument. To select another config or port:
 
 ```console
-LDPC_CONFIG=experiments/experiment.json DASHBOARD_PORT=8890 ./run.sh
+DASHBOARD_PORT=8890 ./run.sh experiments/experiment.json
 ```
 
 ## Tools
