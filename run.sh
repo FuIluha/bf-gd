@@ -16,7 +16,11 @@
 
 set -euo pipefail
 
-project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [[ -n "${SLURM_JOB_ID:-}" && -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+    project_dir=$SLURM_SUBMIT_DIR
+else
+    project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+fi
 config_file=${LDPC_CONFIG:-experiments/experiment_pmgdbf.json}
 dashboard_port=${DASHBOARD_PORT:-8888}
 python_bin="$project_dir/.venv/bin/python3"
