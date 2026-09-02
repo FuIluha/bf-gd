@@ -9,6 +9,7 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
         self.delta_e = kwargs["delta_e"]
         self.alpha = kwargs["alpha"]
         self.p = kwargs["p"]
+        self.zeros_in_init = kwargs["zeros_in_init"]
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
         self.L = kwargs["L"]
 
@@ -126,9 +127,12 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
         if rng is None:
             rng = np.random.default_rng()
         y = llr_in
-        x = np.zeros(self.block_length, dtype=np.int8)
-        x[y >= 0.5] = 1
-        x[y <= -0.5] = -1
+        if self.zeros_in_init:
+            x = np.zeros(self.block_length, dtype=np.int8)
+            x[y >= 0.5] = 1
+            x[y <= -0.5] = -1
+        else:
+            x = (2 * (y >= 0) - 1).astype(np.int8)  # sign, zero is positive
 
         l = np.full(
             self.block_length,
