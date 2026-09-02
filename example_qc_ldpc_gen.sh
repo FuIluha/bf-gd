@@ -1,0 +1,1 @@
+python3 ldpc_qc_matrix.py -c ldpc_savin_12_24.txt --Zc 54
