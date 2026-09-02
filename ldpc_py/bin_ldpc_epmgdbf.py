@@ -2,7 +2,7 @@ import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
 
 class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
-    """Implementation of erasureprobabilistic momentum gradient descent bit-flipping decoder"""
+    """Implementation of erasure probabilistic momentum gradient descent bit-flipping decoder"""
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.delta = kwargs["delta"]
