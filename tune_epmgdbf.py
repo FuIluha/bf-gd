@@ -26,6 +26,7 @@ DEFAULT_DELTAS = np.round(np.arange(0.8, 1.201, 0.05), 2)
 DEFAULT_DELTA_ES = np.round(np.arange(0.9, 1.301, 0.05), 2)
 DEFAULT_ALPHAS = np.round(np.arange(1.5, 2.001, 0.05), 2)
 DEFAULT_PROBABILITIES = np.round(np.arange(0.8, 1.001, 0.05), 2)
+DEFAULT_ZEROS_IN_INIT = (0, 1)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -71,8 +72,8 @@ def parse_args():
     parser.add_argument(
         "--max-errors",
         type=int,
-        default=10,
-        help="stop a parameter set after this many frame errors (default: 10)",
+        default=50,
+        help="stop a parameter set after this many frame errors (default: 50)",
     )
     parser.add_argument(
         "--workers",
@@ -105,6 +106,14 @@ def parse_args():
         "--probabilities",
         type=comma_separated_floats,
         default=DEFAULT_PROBABILITIES,
+    )
+    parser.add_argument(
+        "--zeros-in-init",
+        type=int,
+        nargs="+",
+        choices=(0, 1),
+        default=DEFAULT_ZEROS_IN_INIT,
+        help="initial erasure modes to test: 0, 1, or both (default: 0 1)",
     )
     parser.add_argument(
         "--rho",
@@ -144,14 +153,31 @@ def load_base_experiment(config_path):
 def parameter_grid(args, base_params):
     rho_profiles = args.rho_profiles or [tuple(base_params["rho"])]
     baseline = copy.deepcopy(base_params)
+    baseline.update({
+        "delta": float(base_params["delta"]),
+        "delta_e": float(base_params["delta_e"]),
+        "alpha": float(base_params["alpha"]),
+        "p": float(base_params["p"]),
+        "rho": list(base_params["rho"]),
+        "L": int(base_params["L"]),
+        "zeros_in_init": bool(base_params["zeros_in_init"]),
+    })
 
     candidates = [baseline]
-    for delta, delta_e, alpha, probability, rho in itertools.product(
+    for (
+        delta,
+        delta_e,
+        alpha,
+        probability,
+        rho,
+        zeros_in_init,
+    ) in itertools.product(
         args.deltas,
         args.delta_es,
         args.alphas,
         args.probabilities,
         rho_profiles,
+        args.zeros_in_init,
     ):
         # E_th_e is the wider erasure threshold and must not be below E_th.
         if delta_e < delta:
@@ -164,6 +190,7 @@ def parameter_grid(args, base_params):
             "p": probability,
             "rho": list(rho),
             "L": len(rho),
+            "zeros_in_init": bool(zeros_in_init),
         })
         candidates.append(candidate)
 
