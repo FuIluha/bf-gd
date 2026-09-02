@@ -55,6 +55,18 @@ control the search. For example, a quick smoke test is:
 python3 tune_epmgdbf.py --trials 10 --workers 1 --max-configs 1
 ```
 
+Submit the full search to Slurm with 64 CPUs:
+
+```console
+sbatch tune_epmgdbf.sh
+```
+
+Additional search arguments are forwarded to Python, for example:
+
+```console
+sbatch tune_epmgdbf.sh --trials 10000 --max-configs 10
+```
+
 ## Tools
 ### 5G LDPC constructor
 See [ldpc_5g.py](ldpc_5g.py) script.
