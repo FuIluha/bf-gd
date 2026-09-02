@@ -18,10 +18,10 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_epmgdbf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params.txt"
 
-DEFAULT_DELTAS = np.arange(0.8, 1.2, 0.5)
-DEFAULT_DELTA_ES = np.arange(0.9, 1.3, 0.5)
-DEFAULT_ALPHAS = np.arange(1.5, 2.0, 0.5)
-DEFAULT_PROBABILITIES = np.arange(0.8, 1.0, 0.5)
+DEFAULT_DELTAS = np.arange(0.8, 1.2, 0.05)
+DEFAULT_DELTA_ES = np.arange(0.9, 1.3, 0.05)
+DEFAULT_ALPHAS = np.arange(1.5, 2.0, 0.05)
+DEFAULT_PROBABILITIES = np.arange(0.8, 1.0, 0.05)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -60,7 +60,7 @@ def parse_args():
     parser.add_argument(
         "--trials",
         type=int,
-        default=10_000_000,
+        default=1_000_000,
         help="number of frames evaluated for every parameter set (default: 10000000)",
     )
     parser.add_argument(
