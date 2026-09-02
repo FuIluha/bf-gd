@@ -18,14 +18,15 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_epmgdbf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params.txt"
 
-DEFAULT_DELTAS = np.arange(0.8, 1.2, 0.05)
-DEFAULT_DELTA_ES = np.arange(0.9, 1.3, 0.05)
-DEFAULT_ALPHAS = np.arange(1.5, 2.0, 0.05)
-DEFAULT_PROBABILITIES = np.arange(0.8, 1.0, 0.05)
+DEFAULT_DELTAS = np.round(np.arange(0.8, 1.201, 0.05), 2)
+DEFAULT_DELTA_ES = np.round(np.arange(0.9, 1.301, 0.05), 2)
+DEFAULT_ALPHAS = np.round(np.arange(1.5, 2.001, 0.05), 2)
+DEFAULT_PROBABILITIES = np.round(np.arange(0.8, 1.001, 0.05), 2)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
-_TRIALS = None
+_MAX_TRIALS = None
+_MAX_ERRORS = None
 _SEED = None
 
 
@@ -60,8 +61,14 @@ def parse_args():
     parser.add_argument(
         "--trials",
         type=int,
-        default=1_000_000,
-        help="number of frames evaluated for every parameter set (default: 10000000)",
+        default=10_000_000,
+        help="maximum frames for every parameter set (default: 10000000)",
+    )
+    parser.add_argument(
+        "--max-errors",
+        type=int,
+        default=10,
+        help="stop a parameter set after this many frame errors (default: 10)",
     )
     parser.add_argument(
         "--workers",
@@ -111,6 +118,8 @@ def parse_args():
 def validate_args(args):
     if args.trials <= 0:
         raise ValueError("--trials must be positive")
+    if args.max_errors <= 0:
+        raise ValueError("--max-errors must be positive")
     if args.workers is not None and args.workers <= 0:
         raise ValueError("--workers must be positive")
     if args.max_configs is not None and args.max_configs <= 0:
@@ -173,11 +182,12 @@ def parameter_grid(args, base_params):
     return unique_candidates
 
 
-def init_worker(base_experiment, snr_db, trials, seed):
-    global _BASE_EXPERIMENT, _SNR_DB, _TRIALS, _SEED
+def init_worker(base_experiment, snr_db, max_trials, max_errors, seed):
+    global _BASE_EXPERIMENT, _SNR_DB, _MAX_TRIALS, _MAX_ERRORS, _SEED
     _BASE_EXPERIMENT = base_experiment
     _SNR_DB = snr_db
-    _TRIALS = trials
+    _MAX_TRIALS = max_trials
+    _MAX_ERRORS = max_errors
     _SEED = seed
 
 
@@ -191,21 +201,26 @@ def evaluate_candidate(index_and_params):
     frame_errors = 0
     bit_errors = 0.0
     iterations = 0
-    for trial_index in range(_TRIALS):
+    trials_completed = 0
+    for trial_index in range(_MAX_TRIALS):
         # Identical seeds make every candidate see the same channel realizations.
         rng = np.random.default_rng([_SEED, trial_index])
         result = experiment.run(_SNR_DB, rng)
+        trials_completed += 1
         frame_errors += int(result.fe_cum)
         bit_errors += float(result.be_cum)
         iterations += int(result.n_iter)
+        if frame_errors >= _MAX_ERRORS:
+            break
 
     return {
         "index": index,
         "decoder_params": decoder_params,
+        "trials": trials_completed,
         "frame_errors": frame_errors,
-        "fer": frame_errors / _TRIALS,
-        "ber": bit_errors / _TRIALS,
-        "average_iterations": iterations / _TRIALS,
+        "fer": frame_errors / trials_completed,
+        "ber": bit_errors / trials_completed,
+        "average_iterations": iterations / trials_completed,
     }
 
 
@@ -217,7 +232,9 @@ def result_score(result):
 def save_best(path, result, args, completed, total):
     payload = {
         "snr_db": args.snr,
-        "trials": args.trials,
+        "max_trials": args.trials,
+        "target_frame_errors": args.max_errors,
+        "trials": result["trials"],
         "seed": args.seed,
         "completed_parameter_sets": completed,
         "total_parameter_sets": total,
@@ -240,7 +257,8 @@ def print_best(result, completed, total, output_path):
     params = json.dumps(result["decoder_params"], separators=(",", ":"))
     print(
         f"NEW BEST [{completed}/{total}] "
-        f"FER={result['fer']:.6g} ({result['frame_errors']} errors), "
+        f"FER={result['fer']:.6g} "
+        f"({result['frame_errors']} errors / {result['trials']} trials), "
         f"BER={result['ber']:.6g}, "
         f"avg_iter={result['average_iterations']:.3f}\n"
         f"params={params}\n"
@@ -270,7 +288,8 @@ def main():
     workers = min(args.workers or default_workers(simulation_config), len(candidates))
     output_path = args.output.resolve()
     print(
-        f"EPMGDBF search: SNR={args.snr:g} dB, trials={args.trials}, "
+        f"EPMGDBF search: SNR={args.snr:g} dB, max_trials={args.trials}, "
+        f"target_errors={args.max_errors}, "
         f"parameter_sets={len(candidates)}, workers={workers}",
         flush=True,
     )
@@ -280,7 +299,13 @@ def main():
     with context.Pool(
         processes=workers,
         initializer=init_worker,
-        initargs=(base_experiment, args.snr, args.trials, args.seed),
+        initargs=(
+            base_experiment,
+            args.snr,
+            args.trials,
+            args.max_errors,
+            args.seed,
+        ),
     ) as pool:
         results = pool.imap_unordered(
             evaluate_candidate,

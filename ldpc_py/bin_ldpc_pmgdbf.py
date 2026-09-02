@@ -68,6 +68,5 @@ class BinLdpcPmgdbfDecoder(BinLdpcDecoderBase):
             x[mask] *= -1 # bit-flipping
             l[mask] = 0
 
-        x[x == 0] = -1
         llr_out[:] = x
         return self.n_iterations
