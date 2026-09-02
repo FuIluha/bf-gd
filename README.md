@@ -37,6 +37,24 @@ The experiment JSON is a positional argument. To select another config or port:
 DASHBOARD_PORT=8890 ./run.sh experiments/experiment.json
 ```
 
+## EPMGDBF hyperparameter search
+
+Search the scalar EPMGDBF parameters at SNR 0.5 dB:
+
+```console
+python3 tune_epmgdbf.py
+```
+
+Every time a better set is found, it is printed and saved to `params.txt` in
+the repository root. By default, every parameter set is evaluated on
+10,000,000 frames at SNR 0.5 dB. All candidates use the same random seeds. Use
+`--trials`, `--workers`, and the parameter-list options shown by `--help` to
+control the search. For example, a quick smoke test is:
+
+```console
+python3 tune_epmgdbf.py --trials 10 --workers 1 --max-configs 1
+```
+
 ## Tools
 ### 5G LDPC constructor
 See [ldpc_5g.py](ldpc_5g.py) script.
