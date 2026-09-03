@@ -1,0 +1,44 @@
+{
+  "experiment": {
+    "modulation": "bpsk",
+    "channel_output": "received",
+    "codec": {
+      "type": "BinaryLdpcCodec",
+      "algorithm": "erasure probabilistic momentum gradient descent bit-flipping",
+      "src_dir": "codes",
+      "code": "ldpc_savin_4_8_12_24_Zc54.json",
+      "n_iterations": 300,
+      "llr_type": "float32",
+      "decoder_params": {
+        "delta": 1,
+        "delta_e": 1,
+        "alpha": 1.7,
+        "p": 0.9,
+        "rho": [2,2,2,2,2,1,1],
+        "L": 7
+      }
+    }
+  },
+  "simulation": {
+    "n_workers": 128,
+    "snr_range": "-1:0.05:0.8",
+    "max_errors": 200,
+    "min_error_prob": 0.0000001,
+    "chunk_size": 10,
+    "max_experiments": 10000000,
+    "snr_precision": 3,
+    "log_file": "log_simulator.log"
+  },
+  "postprocessing": {
+    "confidence_level": 0.95,
+    "pe_threshold": 0.95,
+    "max_degree": 15,
+    "max_degree_ratio": 3,
+    "regression_type": "polynomial"
+  },
+  "visualization": {
+    "ip_address": "127.0.0.1",
+    "start_port": 8888,
+    "update_ms": 5000
+  }
+}

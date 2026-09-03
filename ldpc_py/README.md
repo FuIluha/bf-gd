@@ -4,6 +4,7 @@ Decoder of LDPC codes. Supports the following decoders:
 * Min-sum
 * Multi-bit gradient descent bit-flipping
 * PGDBF with momentum
+* EPMGDBF
 
 ## Implementation notes
 This repository has 

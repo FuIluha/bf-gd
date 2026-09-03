@@ -1,22 +1,29 @@
 {
   "experiment": {
     "modulation": "bpsk",
-    "channel_output": "soft",
+    "channel_output": "received",
     "codec": {
-      "type": "BinaryLdpcSoftCodec",
+      "type": "BinaryLdpcCodec",
+      "algorithm": "erasure probabilistic momentum gradient descent bit-flipping",
       "src_dir": "codes",
-      "code": "ldpc_5g_k120_n600.json",
-      "algorithm": "h_layered_min_sum",
-      "n_iterations": 50,
-      "llr_scale": 0.75,
-      "llr_type": "float32"
+      "code": "ldpc_savin_4_8_12_24_Zc54.json",
+      "n_iterations": 300,
+      "llr_type": "float32",
+      "decoder_params": {
+        "delta": 1,
+        "lambd": 1,
+        "alpha": 1,
+        "p": 0.9,
+        "rho": [],
+        "L": 0
+      }
     }
   },
   "simulation": {
-    "n_workers": 12,
-    "snr_range": "-10:0.05:2",
+    "n_workers": 128,
+    "snr_range": "-1:0.05:0.8",
     "max_errors": 200,
-    "min_error_prob": 0.0001,
+    "min_error_prob": 0.0000001,
     "chunk_size": 10,
     "max_experiments": 10000000,
     "snr_precision": 3,

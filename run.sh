@@ -104,15 +104,73 @@ stop_managed_dashboard() {
     return 1
 }
 
+stop_owned_plot_dashboard() {
+    local listener_pid
+    local listener_pids
+
+    if ! command -v lsof >/dev/null 2>&1; then
+        return 1
+    fi
+
+    listener_pids=$(lsof -t -nP -iTCP:"$dashboard_port" -sTCP:LISTEN 2>/dev/null || true)
+    if [[ -z "$listener_pids" ]]; then
+        return 1
+    fi
+
+    for listener_pid in $listener_pids; do
+        if ! is_owned_plot_process "$listener_pid"; then
+            return 1
+        fi
+    done
+
+    echo "Stopping previous dashboard on port $dashboard_port..."
+    kill $listener_pids 2>/dev/null || true
+    for _ in {1..20}; do
+        if ! dashboard_is_ready; then
+            return 0
+        fi
+        sleep 0.25
+    done
+    return 1
+}
+
+is_owned_plot_process() {
+    local process_pid=$1
+    local process_command
+    local process_parent
+    local process_uid
+
+    while [[ "$process_pid" =~ ^[0-9]+$ ]] && (( process_pid > 1 )); do
+        process_uid=$(ps -p "$process_pid" -o uid= 2>/dev/null | tr -d ' ')
+        if [[ "$process_uid" != "$(id -u)" ]]; then
+            return 1
+        fi
+
+        process_command=$(ps -p "$process_pid" -o command= 2>/dev/null || true)
+        if [[ "$process_command" == *plot_results.py* ]]; then
+            return 0
+        fi
+
+        process_parent=$(ps -p "$process_pid" -o ppid= 2>/dev/null | tr -d ' ')
+        if [[ -z "$process_parent" || "$process_parent" == "$process_pid" ]]; then
+            break
+        fi
+        process_pid=$process_parent
+    done
+    return 1
+}
+
 if dashboard_is_ready \
     && [[ -f "$dashboard_config_file" ]] \
     && [[ "$(<"$dashboard_config_file")" == "$dashboard_config_signature" ]]; then
     echo "Dashboard is already running on port $dashboard_port."
 else
-    if dashboard_is_ready && ! stop_managed_dashboard; then
-        echo "Port $dashboard_port is occupied by an unmanaged process." >&2
-        echo "Stop that process or select another DASHBOARD_PORT." >&2
-        exit 1
+    if dashboard_is_ready; then
+        if ! stop_managed_dashboard && ! stop_owned_plot_dashboard; then
+            echo "Port $dashboard_port is occupied by an unknown process." >&2
+            echo "It was not stopped for safety; select another DASHBOARD_PORT." >&2
+            exit 1
+        fi
     fi
 
     echo "Starting dashboard on port $dashboard_port..."
