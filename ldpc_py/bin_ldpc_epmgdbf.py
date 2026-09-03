@@ -9,7 +9,12 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
         self.delta_e = kwargs["delta_e"]
         self.alpha = kwargs["alpha"]
         self.p = kwargs["p"]
-        self.zeros_in_init = kwargs["zeros_in_init"]
+        self.init_erasure_threshold = float(kwargs.get(
+            "init_erasure_threshold",
+            0.5 if kwargs.get("zeros_in_init", False) else 0.0,
+        ))
+        if self.init_erasure_threshold < 0:
+            raise ValueError("Initial erasure threshold must be non-negative")
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
         self.L = kwargs["L"]
 
@@ -127,12 +132,12 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
         if rng is None:
             rng = np.random.default_rng()
         y = llr_in
-        if self.zeros_in_init:
-            x = np.zeros(self.block_length, dtype=np.int8)
-            x[y >= 0.5] = 1
-            x[y <= -0.5] = -1
-        else:
-            x = (2 * (y >= 0) - 1).astype(np.int8)  # sign, zero is positive
+        threshold = self.init_erasure_threshold
+        x = np.where(
+            y >= threshold,
+            1,
+            np.where(y <= -threshold, -1, 0),
+        ).astype(np.int8)
 
         l = np.full(
             self.block_length,
@@ -200,7 +205,6 @@ class BinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
         x[x == 0] = -1
         llr_out[:] = x
         return self.n_iterations
-
 
 
 

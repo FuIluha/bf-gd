@@ -36,7 +36,7 @@ class CppEpmgdbfDecoder {
       double delta_e,
       double alpha,
       double probability,
-      bool zeros_in_init,
+      double init_erasure_threshold,
       const float* rho,
       uint32_t momentum_length,
       const uint32_t* edge_vn,
@@ -48,7 +48,7 @@ class CppEpmgdbfDecoder {
         delta_e_(delta_e),
         alpha_(alpha),
         probability_(probability),
-        zeros_in_init_(zeros_in_init),
+        init_erasure_threshold_(init_erasure_threshold),
         momentum_length_(momentum_length),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
@@ -74,13 +74,10 @@ class CppEpmgdbfDecoder {
 
     for (uint32_t variable = 0; variable < block_length_; ++variable) {
       const Float received = input[variable];
-      if (zeros_in_init_) {
-        x_[variable] = received >= static_cast<Float>(0.5)
-                           ? 1
-                           : (received <= static_cast<Float>(-0.5) ? -1 : 0);
-      } else {
-        x_[variable] = received >= static_cast<Float>(0.0) ? 1 : -1;
-      }
+      const Float threshold = static_cast<Float>(init_erasure_threshold_);
+      x_[variable] = received >= threshold
+                         ? 1
+                         : (received <= -threshold ? -1 : 0);
       momentum_age_[variable] = momentum_length_ + 1;
     }
 
@@ -211,7 +208,7 @@ class CppEpmgdbfDecoder {
   double delta_e_;
   double alpha_;
   double probability_;
-  bool zeros_in_init_;
+  double init_erasure_threshold_;
   uint32_t momentum_length_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
@@ -241,7 +238,7 @@ extern "C" void* cpp_epmgdbf_create(
     double delta_e,
     double alpha,
     double probability,
-    uint8_t zeros_in_init,
+    double init_erasure_threshold,
     const float* rho,
     uint32_t momentum_length,
     const uint32_t* edge_vn,
@@ -255,7 +252,7 @@ extern "C" void* cpp_epmgdbf_create(
         delta_e,
         alpha,
         probability,
-        zeros_in_init != 0,
+        init_erasure_threshold,
         rho,
         momentum_length,
         edge_vn,

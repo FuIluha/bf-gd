@@ -76,7 +76,7 @@ def load_library():
         ctypes.c_double,
         ctypes.c_double,
         ctypes.c_double,
-        ctypes.c_uint8,
+        ctypes.c_double,
         ctypes.POINTER(ctypes.c_float),
         ctypes.c_uint32,
         uint32_array,
@@ -111,7 +111,12 @@ class CppBinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
         self.delta_e = kwargs["delta_e"]
         self.alpha = kwargs["alpha"]
         self.p = kwargs["p"]
-        self.zeros_in_init = kwargs["zeros_in_init"]
+        self.init_erasure_threshold = float(kwargs.get(
+            "init_erasure_threshold",
+            0.5 if kwargs.get("zeros_in_init", False) else 0.0,
+        ))
+        if self.init_erasure_threshold < 0:
+            raise ValueError("Initial erasure threshold must be non-negative")
         self.L = kwargs["L"]
         self.rho = np.asarray(kwargs["rho"], dtype=np.float32)
 
@@ -136,7 +141,7 @@ class CppBinLdpcEpmgdbfDecoder(BinLdpcDecoderBase):
             self.delta_e,
             self.alpha,
             self.p,
-            self.zeros_in_init,
+            self.init_erasure_threshold,
             self.rho.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
             self.L,
             self.edge_vn,

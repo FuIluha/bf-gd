@@ -22,11 +22,11 @@ DEFAULT_OUTPUT = PROJECT_DIR / "params.txt"
 PYTHON_ALGORITHM = "erasure probabilistic momentum gradient descent bit-flipping"
 CPP_ALGORITHM = "cpp erasure probabilistic momentum gradient descent bit-flipping"
 
-DEFAULT_DELTAS = np.round(np.arange(0.8, 1.201, 0.05), 2)
-DEFAULT_DELTA_ES = np.round(np.arange(0.9, 1.301, 0.05), 2)
-DEFAULT_ALPHAS = np.round(np.arange(1.5, 2.001, 0.05), 2)
-DEFAULT_PROBABILITIES = np.round(np.arange(0.8, 1.001, 0.05), 2)
-DEFAULT_ZEROS_IN_INIT = (0, 1)
+DEFAULT_DELTAS = np.round(np.arange(0.95, 1.101, 0.05), 2)
+DEFAULT_DELTA_ES = np.round(np.arange(1.0, 1.201, 0.05), 2)
+DEFAULT_ALPHAS = np.round(np.arange(1.7, 1.901, 0.05), 2)
+DEFAULT_PROBABILITIES = np.round(np.arange(0.9, 1.001, 0.05), 2)
+DEFAULT_INIT_ERASURE_THRESHOLDS = (0.0, 0.33, 0.5)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -108,12 +108,10 @@ def parse_args():
         default=DEFAULT_PROBABILITIES,
     )
     parser.add_argument(
-        "--zeros-in-init",
-        type=int,
-        nargs="+",
-        choices=(0, 1),
-        default=DEFAULT_ZEROS_IN_INIT,
-        help="initial erasure modes to test: 0, 1, or both (default: 0 1)",
+        "--init-erasure-thresholds",
+        type=comma_separated_floats,
+        default=DEFAULT_INIT_ERASURE_THRESHOLDS,
+        help="comma-separated initial erasure thresholds (default: 0,0.33,0.5)",
     )
     parser.add_argument(
         "--rho",
@@ -139,6 +137,8 @@ def validate_args(args):
         raise ValueError("--max-configs must be positive")
     if any(probability <= 0 or probability > 1 for probability in args.probabilities):
         raise ValueError("all probabilities must be in (0, 1]")
+    if any(threshold < 0 for threshold in args.init_erasure_thresholds):
+        raise ValueError("all initial erasure thresholds must be non-negative")
 
 
 def load_base_experiment(config_path):
@@ -152,7 +152,12 @@ def load_base_experiment(config_path):
 
 def parameter_grid(args, base_params):
     rho_profiles = args.rho_profiles or [tuple(base_params["rho"])]
+    base_init_erasure_threshold = float(base_params.get(
+        "init_erasure_threshold",
+        0.5 if base_params.get("zeros_in_init", False) else 0.0,
+    ))
     baseline = copy.deepcopy(base_params)
+    baseline.pop("zeros_in_init", None)
     baseline.update({
         "delta": float(base_params["delta"]),
         "delta_e": float(base_params["delta_e"]),
@@ -160,7 +165,7 @@ def parameter_grid(args, base_params):
         "p": float(base_params["p"]),
         "rho": list(base_params["rho"]),
         "L": int(base_params["L"]),
-        "zeros_in_init": bool(base_params["zeros_in_init"]),
+        "init_erasure_threshold": base_init_erasure_threshold,
     })
 
     candidates = [baseline]
@@ -170,19 +175,20 @@ def parameter_grid(args, base_params):
         alpha,
         probability,
         rho,
-        zeros_in_init,
+        init_erasure_threshold,
     ) in itertools.product(
         args.deltas,
         args.delta_es,
         args.alphas,
         args.probabilities,
         rho_profiles,
-        args.zeros_in_init,
+        args.init_erasure_thresholds,
     ):
         # E_th_e is the wider erasure threshold and must not be below E_th.
         if delta_e < delta:
             continue
         candidate = copy.deepcopy(base_params)
+        candidate.pop("zeros_in_init", None)
         candidate.update({
             "delta": delta,
             "delta_e": delta_e,
@@ -190,7 +196,7 @@ def parameter_grid(args, base_params):
             "p": probability,
             "rho": list(rho),
             "L": len(rho),
-            "zeros_in_init": bool(zeros_in_init),
+            "init_erasure_threshold": init_erasure_threshold,
         })
         candidates.append(candidate)
 
