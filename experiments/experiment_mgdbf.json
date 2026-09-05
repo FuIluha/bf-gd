@@ -6,8 +6,8 @@
       "type": "BinaryLdpcCodec",
       "algorithm": "multi gradient descent bit-flipping",
       "src_dir": "codes",
-      "code": "ldpc_5g_k120_n600.json",
-      "n_iterations": 100,
+      "code": "ldpc_savin_4_8_12_24_Zc54.json",
+      "n_iterations": 300,
       "llr_type": "float32",
       "decoder_params": {
         "theta": -0.6,
@@ -17,7 +17,7 @@
   },
   "simulation": {
     "n_workers": 8,
-    "snr_range": "-10:0.05:2",
+    "snr_range": "-1:0.05:0.8",
     "max_errors": 200,
     "min_error_prob": 0.0001,
     "chunk_size": 10,

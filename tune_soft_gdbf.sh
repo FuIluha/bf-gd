@@ -30,5 +30,6 @@ if [[ ! -x "$python_bin" ]] || ! "$python_bin" --version >/dev/null 2>&1; then
 fi
 
 exec srun "$python_bin" tune_soft_gdbf.py \
+    --config experiments/experiment_cpp_soft_gdbf.json \
     --workers "${SLURM_CPUS_PER_TASK:-128}" \
     "$@"

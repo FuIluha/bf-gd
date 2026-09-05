@@ -2,25 +2,23 @@ import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
 
 class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
-    """Implementation of soft gradient descent bit-flipping decoder."""
+    """Implementation of projected gradient ascent bit-flipping decoder."""
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
-        self.learning_rate = float(kwargs.get("learning_rate", 1.0))
-        self.update_probability = float(kwargs.get("update_probability", 1.0))
-        self.beta1 = float(kwargs.get("beta1", 0.9))
-        self.beta2 = float(kwargs.get("beta2", 0.999))
-        self.adam_epsilon = float(kwargs.get("adam_epsilon", 1e-8))
+        self.learning_rate = kwargs["learning_rate"]
+        self.learning_rate_decay = kwargs["learning_rate_decay"]
+        self.momentum = kwargs["momentum"]
+        self.regularization = kwargs["regularization"]
+        self.alpha = kwargs["alpha"]
 
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
-        if not 0 < self.update_probability <= 1:
-            raise ValueError("Update probability must be in (0, 1]")
-        if not 0 <= self.beta1 < 1:
-            raise ValueError("beta1 must be in [0, 1)")
-        if not 0 <= self.beta2 < 1:
-            raise ValueError("beta2 must be in [0, 1)")
-        if self.adam_epsilon <= 0:
-            raise ValueError("Adam epsilon must be positive")
+        if self.learning_rate_decay < 0:
+            raise ValueError("Learning rate decay must be non-negative")
+        if not 0 <= self.momentum < 1:
+            raise ValueError("Momentum must be in [0, 1)")
+        if self.regularization < 0:
+            raise ValueError("Regularization must be non-negative")
 
         self.edge_cn, self.edge_vn = np.nonzero(self.pcm)
 
@@ -45,97 +43,80 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
             self.check_offsets[:-1],
         )
 
-    def objective_gradient(self, x, y):
-        """Calculate the gradient of the soft GDBF objective function."""
+    def check_to_variable_messages(self, x):
+        """Calculate min-sum check-to-variable messages."""
         edge_values = x[self.edge_vn]
-        edge_is_zero = edge_values == 0
+        edge_signs = np.where(edge_values < 0, -1, 1)
+        edge_magnitudes = np.abs(edge_values)
 
-        nonzero_edge_values = np.where(edge_is_zero, 1, edge_values)
-
-        # Keep the sign and magnitude separate because log is undefined for
-        # negative values.
-        check_sign_products = np.multiply.reduceat(
-            np.sign(nonzero_edge_values),
+        check_signs = np.multiply.reduceat(
+            edge_signs,
             self.check_offsets[:-1],
         )
-        edge_log_magnitudes = np.log(np.abs(nonzero_edge_values))
-        check_log_magnitude_sums = np.add.reduceat(
-            edge_log_magnitudes,
+        first_minima = np.minimum.reduceat(
+            edge_magnitudes,
             self.check_offsets[:-1],
         )
-        check_zero_counts = np.add.reduceat(
-            edge_is_zero,
+        is_first_minimum = (
+            edge_magnitudes == first_minima[self.edge_cn]
+        )
+        first_minimum_counts = np.add.reduceat(
+            is_first_minimum,
+            self.check_offsets[:-1],
+        )
+        second_minima = np.minimum.reduceat(
+            np.where(is_first_minimum, np.inf, edge_magnitudes),
             self.check_offsets[:-1],
         )
 
-        edge_check_signs = check_sign_products[self.edge_cn]
-        edge_check_log_magnitudes = check_log_magnitude_sums[self.edge_cn]
-        edge_zero_counts = check_zero_counts[self.edge_cn]
-        extrinsic_products = np.zeros_like(edge_values)
-
-        # No zeros in a check: remove the current edge in the log domain.
-        no_zero_mask = edge_zero_counts == 0
-        extrinsic_products[no_zero_mask] = (
-            edge_check_signs[no_zero_mask]
-            * np.sign(edge_values[no_zero_mask])
-            * np.exp(
-                edge_check_log_magnitudes[no_zero_mask]
-                - edge_log_magnitudes[no_zero_mask]
-            )
+        use_second_minimum = (
+            is_first_minimum
+            & (first_minimum_counts[self.edge_cn] == 1)
         )
-
-        # Exactly one zero: only that zero receives a nonzero product.
-        single_zero_edge_mask = (edge_zero_counts == 1) & edge_is_zero
-        extrinsic_products[single_zero_edge_mask] = (
-            edge_check_signs[single_zero_edge_mask]
-            * np.exp(edge_check_log_magnitudes[single_zero_edge_mask])
+        extrinsic_magnitudes = np.where(
+            use_second_minimum,
+            second_minima[self.edge_cn],
+            first_minima[self.edge_cn],
         )
+        extrinsic_signs = check_signs[self.edge_cn] * edge_signs
+        return extrinsic_signs * extrinsic_magnitudes
 
-        return y + np.bincount(
+    def objective_gradient(self, x, y):
+        """Calculate a received-scale soft bit-update direction."""
+        edge_messages = self.check_to_variable_messages(x)
+        check_message_sum = np.bincount(
             self.edge_vn,
-            weights=extrinsic_products,
+            weights=edge_messages,
             minlength=self.block_length,
+        )
+        return (
+            self.alpha * y
+            + check_message_sum
+            - self.regularization * x
         )
 
     def decode(self, llr_in, llr_out, rng=None):
-        if rng is None:
-            rng = np.random.default_rng()
         y = llr_in.copy()
         x = y.copy()
-        gradient_history = np.zeros_like(x)
-        second_moment = np.zeros_like(x)
+        velocity = np.zeros_like(x)
 
         for iteration in range(self.n_iterations): # iteration loop
-            hard_x = (2 * (x >= 0) - 1).astype(np.int8)
+            hard_x = np.where(x >= 0, 1, -1).astype(np.int8)
             check_syndromes = self.bpsk_syndrome(hard_x) # syndrome
 
             if np.all(check_syndromes == 1):
-                llr_out[:] = hard_x
+                llr_out[:] = x
                 return iteration # exit the iteration loop;
 
             grad = self.objective_gradient(x, y)
-            penalized_grad = grad - self.beta1 * gradient_history
-
-            second_moment *= self.beta2
-            second_moment += (
-                (1 - self.beta2) * penalized_grad * penalized_grad
+            velocity = (
+                self.momentum * velocity
+                + (1 - self.momentum) * grad
             )
-
-            step = iteration + 1
-            corrected_second_moment = second_moment / (1 - self.beta2 ** step)
-            adam_update = self.learning_rate * penalized_grad / (
-                np.sqrt(corrected_second_moment) + self.adam_epsilon
+            current_learning_rate = self.learning_rate / np.sqrt(
+                1 + self.learning_rate_decay * iteration
             )
-            update_mask = (
-                rng.random(self.block_length) < self.update_probability
-            )
-            x[update_mask] += adam_update[update_mask]
+            x = x + current_learning_rate * velocity
 
-            # Remember only directions in which an update was actually made.
-            gradient_history *= self.beta1
-            gradient_history[update_mask] += (
-                (1 - self.beta1) * grad[update_mask]
-            )
-
-        llr_out[:] = 2 * (x >= 0) - 1
+        llr_out[:] = x
         return self.n_iterations
