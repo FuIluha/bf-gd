@@ -1,4 +1,4 @@
-"""Grid-search the C++ soft GDBF parameters at one SNR point."""
+"""Grid-search the C++ sum-product GDBF parameters at one SNR point."""
 
 import argparse
 import copy
@@ -11,19 +11,19 @@ from pathlib import Path
 import numpy as np
 
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
-from ldpc_py.cpp_bin_ldpc_soft_gdbf import lib_compile as soft_gdbf_compile
+from ldpc_py.cpp_bin_ldpc_sp_gdbf import lib_compile as sp_gdbf_compile
 from simulator_awgn_python.tools import load_json
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_soft_gdbf.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_soft_gdbf_refined.txt"
+DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_sp_gdbf.json"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_sp_gdbf.txt"
 
-DEFAULT_LEARNING_RATES = (2.5, 3.0, 3.5)
-DEFAULT_LEARNING_RATE_DECAYS = (0.05, 0.1, 0.5)
-DEFAULT_MOMENTA = (0.7, 0.8, 0.9)
-DEFAULT_REGULARIZATIONS = (2.0, 2.5, 3.0)
-DEFAULT_ALPHAS = (1.6, 1.7, 1.8)
+DEFAULT_LEARNING_RATES = (0.25, 0.5, 1.0, 2.0, 3.0)
+DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.05, 0.1, 0.3, 0.5)
+DEFAULT_MOMENTA = (0.0, 0.4, 0.6, 0.8, 0.9)
+DEFAULT_REGULARIZATIONS = (0.0, 0.5, 1.5, 2.5, 3.5)
+DEFAULT_ALPHAS = (0.25, 0.5, 1.0, 1.7, 2.5)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -45,12 +45,12 @@ def comma_separated_floats(value):
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Search C++ soft GDBF hyperparameters using FER at a fixed SNR. "
-            "Every new best result is saved immediately."
+            "Search C++ sum-product GDBF hyperparameters using FER at a fixed "
+            "SNR. Every new best result is saved immediately."
         )
     )
     parser.add_argument("-c", "--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--snr", type=float, default=0.5)
+    parser.add_argument("--snr", type=float, default=0.0)
     parser.add_argument("--trials", type=int, default=100_000_000)
     parser.add_argument("--max-errors", type=int, default=50)
     parser.add_argument("--workers", type=int)
@@ -108,9 +108,9 @@ def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
     if experiment["codec"].get("algorithm") != (
-        "cpp soft gradient descent bit-flipping"
+        "cpp sum-product gradient descent bit-flipping"
     ):
-        raise ValueError("the selected config must use the C++ soft GDBF decoder")
+        raise ValueError("the selected config must use the C++ SP GDBF decoder")
     return experiment, config.get("simulation", {})
 
 
@@ -239,7 +239,7 @@ def main():
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
-    soft_gdbf_compile()
+    sp_gdbf_compile()
     candidates = parameter_grid(
         args,
         base_experiment["codec"]["decoder_params"],
@@ -250,7 +250,7 @@ def main():
     workers = min(args.workers or default_workers(simulation_config), len(candidates))
     output_path = args.output.resolve()
     print(
-        f"Soft GDBF search: SNR={args.snr:g} dB, "
+        f"SP GDBF search: SNR={args.snr:g} dB, "
         f"max_trials={args.trials}, target_errors={args.max_errors}, "
         f"parameter_sets={len(candidates)}, workers={workers}",
         flush=True,
