@@ -8,7 +8,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=128
 #SBATCH --mem=32G
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 
 set -euo pipefail

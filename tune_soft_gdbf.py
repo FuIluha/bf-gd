@@ -11,19 +11,20 @@ from pathlib import Path
 import numpy as np
 
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
-from ldpc_py.cpp_bin_ldpc_soft_gdbf import lib_compile
+from ldpc_py.cpp_bin_ldpc_soft_gdbf import lib_compile as soft_gdbf_compile
+from ldpc_py.cpp_bin_ldpc_sp_gdbf import lib_compile as sp_gdbf_compile
 from simulator_awgn_python.tools import load_json
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_soft_gdbf.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_soft_gdbf.txt"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_soft_gdbf_refined.txt"
 
-DEFAULT_LEARNING_RATES = (0.1, 0.3, 0.5, 1.0, 3.0)
-DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.03, 0.1, 0.3, 1.0)
-DEFAULT_MOMENTA = (0.0, 0.5, 0.8, 0.9)
-DEFAULT_REGULARIZATIONS = (0.0, 0.01, 1.0, 3.0, 4.5, 6.0)
-DEFAULT_ALPHAS = (1.0, 1.4, 1.7, 2.0, 2.5)
+DEFAULT_LEARNING_RATES = (2.5, 3.0, 3.5)
+DEFAULT_LEARNING_RATE_DECAYS = (0.075, 0.1, 0.125)
+DEFAULT_MOMENTA = (0.75, 0.8, 0.85)
+DEFAULT_REGULARIZATIONS = (2.25, 2.5, 2.75)
+DEFAULT_ALPHAS = (1.5, 1.7, 1.9)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -107,10 +108,11 @@ def validate_args(args):
 def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
-    if experiment["codec"].get("algorithm") != (
-        "cpp soft gradient descent bit-flipping"
+    if experiment["codec"].get("algorithm") not in (
+        "cpp soft gradient descent bit-flipping",
+        "cpp sum-product gradient descent bit-flipping",
     ):
-        raise ValueError("the selected config must use the C++ soft GDBF decoder")
+        raise ValueError("the selected config must use a C++ soft GDBF decoder")
     return experiment, config.get("simulation", {})
 
 
@@ -239,7 +241,11 @@ def main():
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
-    lib_compile()
+    algorithm = base_experiment["codec"]["algorithm"]
+    if algorithm == "cpp sum-product gradient descent bit-flipping":
+        sp_gdbf_compile()
+    else:
+        soft_gdbf_compile()
     candidates = parameter_grid(
         args,
         base_experiment["codec"]["decoder_params"],

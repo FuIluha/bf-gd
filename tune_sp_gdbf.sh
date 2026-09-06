@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-#SBATCH --job-name=epmgdbf-tune
-#SBATCH --output=logs/tune_epmgdbf_%j.out
-#SBATCH --error=logs/tune_epmgdbf_%j.err
+#SBATCH --job-name=sp-gdbf-tune
+#SBATCH --output=logs/tune_sp_gdbf_%j.out
+#SBATCH --error=logs/tune_sp_gdbf_%j.err
 #SBATCH --partition=amd
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -29,6 +29,8 @@ if [[ ! -x "$python_bin" ]] || ! "$python_bin" --version >/dev/null 2>&1; then
     exit 1
 fi
 
-exec srun "$python_bin" tune_epmgdbf.py \
+exec srun "$python_bin" tune_soft_gdbf.py \
+    --config experiments/experiment_cpp_sp_gdbf.json \
+    --output params_cpp_sp_gdbf.txt \
     --workers "${SLURM_CPUS_PER_TASK:-128}" \
     "$@"
