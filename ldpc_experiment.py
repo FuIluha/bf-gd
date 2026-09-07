@@ -144,10 +144,8 @@ class LdpcExperimentInstance:
 
     def output_ber(self, n_iter):
         """
-        Calculate output BER. Avoid passing data to ctypes if early termination happened
+        Calculate output BER from the decoder output.
         """
-        if self.codec.is_azcw() and n_iter < self.codec.n_iterations:
-            return 0.0
         return self.codec.decoder_impl.output_ber(self.llr_out, self.tx_bits, n_iter)
 
     def one_hot(self, n_iter):

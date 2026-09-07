@@ -1,26 +1,24 @@
 {
   "experiment": {
     "modulation": "bpsk",
-    "channel_output": "received",
+    "channel_output": "soft",
     "codec": {
       "type": "BinaryLdpcCodec",
-      "algorithm": "cpp soft gradient descent bit-flipping",
+      "algorithm": "gradient descent decoder",
       "src_dir": "codes",
       "code": "ldpc_savin_4_8_12_24_Zc54.json",
       "n_iterations": 50,
       "llr_type": "float32",
       "decoder_params": {
-        "learning_rate": 2.5,
-        "learning_rate_decay": 0.05,
-        "momentum": 0.8,
-        "regularization": 3,
+        "learning_rate": 2,
+        "regularization": 2.5,
         "alpha": 1.8
       }
     }
   },
   "simulation": {
-    "n_workers": 128,
-    "snr_range": "-1:0.05:0.4",
+    "n_workers": 12,
+    "snr_range": "-1:0.05:0.5",
     "max_errors": 200,
     "min_error_prob": 0.0000001,
     "chunk_size": 10,

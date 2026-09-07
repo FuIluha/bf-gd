@@ -245,7 +245,7 @@ class BinLdpcSoftDecoderBase:
         self.settings= SettingsType(
             block_length=block_length,
             n_checks=n_checks,
-            is_systematic=['is_systematic'],
+            is_systematic=kwargs['is_systematic'],
             early_termination=True,  # By default, use early termination
             is_azcw=kwargs['is_azcw'],
             n_iterations=kwargs['n_iterations'],

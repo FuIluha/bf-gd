@@ -5,18 +5,18 @@
     "codec": {
       "type": "BinaryLdpcSoftCodec",
       "src_dir": "codes",
-      "code": "ldpc_5g_k120_n600.json",
-      "algorithm": "h_layered_min_sum",
+      "code": "ldpc_savin_4_8_12_24_Zc54.json",
+      "algorithm": "sum_product",
       "n_iterations": 50,
-      "llr_scale": 0.75,
+      "llr_scale": 1.0,
       "llr_type": "float32"
     }
   },
   "simulation": {
     "n_workers": 12,
-    "snr_range": "-10:0.05:2",
+    "snr_range": "-1:0.05:0.5",
     "max_errors": 200,
-    "min_error_prob": 0.0001,
+    "min_error_prob": 0.0000001,
     "chunk_size": 10,
     "max_experiments": 10000000,
     "snr_precision": 3,
