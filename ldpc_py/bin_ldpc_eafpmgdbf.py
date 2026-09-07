@@ -95,8 +95,8 @@ class BinLdpcEafmgdbfDecoder(BinLdpcDecoderBase):
 
                 majority = np.sign(votes_sum).astype(np.int8)
 
-                fixed = erasured & (votes_count > 0) & (majority != 0)  
-                unresolved = erasured & ((votes_count == 0) | (majority == 0))  
+                fixed = erasured & (votes_count > 0) & (majority != 0)
+                unresolved = ~fixed & erasured
 
                 x[fixed] = majority[fixed]
                 x[unresolved] = x_copy[unresolved]
