@@ -211,6 +211,8 @@ class BinLdpcEafpmgdbfDecoder(BinLdpcDecoderBase):
                 check_syndromes = self.bpsk_syndrome(x)
 
             if np.all(check_syndromes == 1):
+                unresolved = x == 0
+                x[unresolved] = np.where(y[unresolved] >= 0, 1, -1)
                 llr_out[:] = x
                 return iteration # exit the iteration loop;
 
@@ -244,6 +246,6 @@ class BinLdpcEafpmgdbfDecoder(BinLdpcDecoderBase):
                 l[new_erasure_mask] = 0
 
         unresolved = x == 0
-        x[unresolved] = original_values[unresolved]
+        x[unresolved] = np.where(y[unresolved] >= 0, 1, -1)
         llr_out[:] = x
         return self.n_iterations
