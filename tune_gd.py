@@ -17,11 +17,13 @@ from simulator_awgn_python.tools import load_json
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gd.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gd.txt"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gd_momentum.txt"
 
-DEFAULT_LEARNING_RATES = (0.02, 0.05, 0.1, 0.2, 0.4, 0.8)
-DEFAULT_REGULARIZATIONS = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
-DEFAULT_ALPHAS = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
+DEFAULT_LEARNING_RATES = (1.5, 2.0, 2.5, 3.0, 4.0)
+DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.05, 0.1, 0.25)
+DEFAULT_MOMENTA = (0.0, 0.3, 0.5, 0.7, 0.9)
+DEFAULT_REGULARIZATIONS = (0.15, 0.2, 0.25, 0.3)
+DEFAULT_ALPHAS = (0.04, 0.06, 0.08, 0.1)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -63,6 +65,16 @@ def parse_args():
         default=DEFAULT_LEARNING_RATES,
     )
     parser.add_argument(
+        "--learning-rate-decays",
+        type=comma_separated_floats,
+        default=DEFAULT_LEARNING_RATE_DECAYS,
+    )
+    parser.add_argument(
+        "--momenta",
+        type=comma_separated_floats,
+        default=DEFAULT_MOMENTA,
+    )
+    parser.add_argument(
         "--regularizations",
         type=comma_separated_floats,
         default=DEFAULT_REGULARIZATIONS,
@@ -86,6 +98,10 @@ def validate_args(args):
         raise ValueError("--max-configs must be positive")
     if any(value <= 0 for value in args.learning_rates):
         raise ValueError("all learning rates must be positive")
+    if any(value < 0 for value in args.learning_rate_decays):
+        raise ValueError("all learning-rate decays must be non-negative")
+    if any(not 0 <= value < 1 for value in args.momenta):
+        raise ValueError("all momenta must be in [0, 1)")
     if any(value < 0 for value in args.regularizations):
         raise ValueError("all regularizations must be non-negative")
     if any(value < 0 for value in args.alphas):
@@ -107,19 +123,25 @@ def load_base_experiment(config_path):
 def parameter_grid(args, base_params):
     baseline = {
         "learning_rate": float(base_params["learning_rate"]),
+        "learning_rate_decay": float(base_params["learning_rate_decay"]),
+        "momentum": float(base_params["momentum"]),
         "regularization": float(base_params["regularization"]),
         "alpha": float(base_params["alpha"]),
     }
     candidates = [baseline]
-    for learning_rate, regularization, alpha in itertools.product(
+    for values in itertools.product(
         args.learning_rates,
+        args.learning_rate_decays,
+        args.momenta,
         args.regularizations,
         args.alphas,
     ):
         candidates.append({
-            "learning_rate": learning_rate,
-            "regularization": regularization,
-            "alpha": alpha,
+            "learning_rate": values[0],
+            "learning_rate_decay": values[1],
+            "momentum": values[2],
+            "regularization": values[3],
+            "alpha": values[4],
         })
 
     unique_candidates = []

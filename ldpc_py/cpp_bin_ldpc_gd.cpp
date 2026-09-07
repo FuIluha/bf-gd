@@ -12,6 +12,8 @@ class CppGdDecoder {
       uint32_t n_checks,
       uint32_t n_iterations,
       double learning_rate,
+      double learning_rate_decay,
+      double momentum,
       double regularization,
       double alpha,
       const uint32_t* edge_vn,
@@ -20,17 +22,21 @@ class CppGdDecoder {
         n_checks_(n_checks),
         n_iterations_(n_iterations),
         learning_rate_(learning_rate),
+        learning_rate_decay_(learning_rate_decay),
+        momentum_(momentum),
         regularization_(regularization),
         alpha_(alpha),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         x_(block_length),
         gradient_(block_length),
+        velocity_(block_length),
         prefix_messages_(check_offsets[n_checks] + 1),
         suffix_messages_(check_offsets[n_checks] + 1) {}
 
   template <typename Float>
   uint32_t Decode(const Float* input, Float* output) {
+    std::fill(velocity_.begin(), velocity_.end(), 0.0);
     for (uint32_t variable = 0; variable < block_length_; ++variable) {
       x_[variable] = static_cast<double>(input[variable]);
     }
@@ -42,8 +48,14 @@ class CppGdDecoder {
       }
 
       CalculateGradient(input);
+      const double current_learning_rate =
+          learning_rate_ /
+          std::sqrt(1.0 + learning_rate_decay_ * iteration);
       for (uint32_t variable = 0; variable < block_length_; ++variable) {
-        x_[variable] += learning_rate_ * gradient_[variable];
+        velocity_[variable] =
+            momentum_ * velocity_[variable] +
+            (1.0 - momentum_) * gradient_[variable];
+        x_[variable] += current_learning_rate * velocity_[variable];
       }
       if (!ValuesFit<Float>()) {
         return std::numeric_limits<uint32_t>::max();
@@ -157,12 +169,15 @@ class CppGdDecoder {
   uint32_t n_checks_;
   uint32_t n_iterations_;
   double learning_rate_;
+  double learning_rate_decay_;
+  double momentum_;
   double regularization_;
   double alpha_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
   std::vector<double> x_;
   std::vector<double> gradient_;
+  std::vector<double> velocity_;
   std::vector<double> prefix_messages_;
   std::vector<double> suffix_messages_;
 };
@@ -172,6 +187,8 @@ extern "C" void* cpp_gd_create(
     uint32_t n_checks,
     uint32_t n_iterations,
     double learning_rate,
+    double learning_rate_decay,
+    double momentum,
     double regularization,
     double alpha,
     const uint32_t* edge_vn,
@@ -182,6 +199,8 @@ extern "C" void* cpp_gd_create(
         n_checks,
         n_iterations,
         learning_rate,
+        learning_rate_decay,
+        momentum,
         regularization,
         alpha,
         edge_vn,

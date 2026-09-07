@@ -9,11 +9,17 @@ class BinLdpcGdDecoder(BinLdpcDecoderBase):
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.learning_rate = kwargs["learning_rate"]
+        self.learning_rate_decay = kwargs["learning_rate_decay"]
+        self.momentum = kwargs["momentum"]
         self.regularization = kwargs["regularization"]
         self.alpha = kwargs["alpha"]
 
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
+        if self.learning_rate_decay < 0:
+            raise ValueError("Learning rate decay must be non-negative")
+        if not 0 <= self.momentum < 1:
+            raise ValueError("Momentum must be in [0, 1)")
         if self.regularization < 0:
             raise ValueError("Regularization must be non-negative")
         if self.alpha < 0:
@@ -102,6 +108,7 @@ class BinLdpcGdDecoder(BinLdpcDecoderBase):
     def decode(self, llr_in, llr_out, rng=None):
         channel_llr = llr_in.copy()
         x = channel_llr.copy()
+        velocity = np.zeros_like(x)
 
         for iteration in range(self.n_iterations):
             hard_x = np.where(x >= 0, 1, -1).astype(np.int8)
@@ -110,7 +117,14 @@ class BinLdpcGdDecoder(BinLdpcDecoderBase):
                 return iteration
 
             gradient = self.objective_gradient(x, channel_llr)
-            x += self.learning_rate * gradient
+            velocity = (
+                self.momentum * velocity
+                + (1 - self.momentum) * gradient
+            )
+            current_learning_rate = self.learning_rate / np.sqrt(
+                1 + self.learning_rate_decay * iteration
+            )
+            x += current_learning_rate * velocity
 
         llr_out[:] = x
         return self.n_iterations
