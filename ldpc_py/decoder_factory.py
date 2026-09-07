@@ -1,6 +1,7 @@
 from .bin_ldpc_bf import BinLdpcBfDecoder
 from .bin_ldpc_ms import BinLdpcMsDecoder
 from .bin_ldpc_mgdbf import BinLdpcMgdbfDecoder
+from .bin_ldpc_sigmoid import BinLdpcSigmoidDecoder
 from .bin_ldpc_pmgdbf import BinLdpcPmgdbfDecoder
 from .bin_ldpc_epmgdbf import BinLdpcEpmgdbfDecoder
 from .bin_ldpc_eafpmgdbf import BinLdpcEafpmgdbfDecoder
@@ -9,6 +10,7 @@ _DECODER_TYPES = {
     "bit-flipping": BinLdpcBfDecoder,
     "min-sum": BinLdpcMsDecoder,
     "multi gradient descent bit-flipping": BinLdpcMgdbfDecoder,
+    "sigmoid multi gradient descent bit-flipping": BinLdpcSigmoidDecoder,
     "probabilistic momentum gradient descent bit-flipping": BinLdpcPmgdbfDecoder,
     "erasure probabilistic momentum gradient descent bit-flipping": BinLdpcEpmgdbfDecoder,
     "erasure add probabilistic momentum gradient descent bit-flipping": BinLdpcEafpmgdbfDecoder,
