@@ -15,6 +15,7 @@ class CppPgdDecoder {
       double learning_rate_decay,
       double momentum,
       double alpha,
+      double beta,
       const uint32_t* edge_vn,
       const uint32_t* check_offsets)
       : block_length_(block_length),
@@ -24,6 +25,7 @@ class CppPgdDecoder {
         learning_rate_decay_(learning_rate_decay),
         momentum_(momentum),
         alpha_(alpha),
+        beta_(beta),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         x_(block_length),
@@ -92,7 +94,7 @@ class CppPgdDecoder {
   void CalculateGradient(const Float* input) {
     for (uint32_t variable = 0; variable < block_length_; ++variable) {
       bipolar_probabilities_[variable] =
-          std::tanh(x_[variable] / sigma_squared_);
+          std::tanh(beta_ * x_[variable] / sigma_squared_);
       gradient_[variable] =
           alpha_ * static_cast<double>(input[variable]);
     }
@@ -121,7 +123,7 @@ class CppPgdDecoder {
         const double extrinsic_product =
             prefix_products_[edge] * suffix_products_[edge + 1];
         gradient_[variable] +=
-            (1.0 - bipolar_probabilities_[variable] *
+            beta_ * (1.0 - bipolar_probabilities_[variable] *
                        bipolar_probabilities_[variable]) /
             sigma_squared_ * extrinsic_product;
       }
@@ -154,6 +156,7 @@ class CppPgdDecoder {
   double learning_rate_decay_;
   double momentum_;
   double alpha_;
+  double beta_;
   double sigma_squared_ = 0.0;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
@@ -173,6 +176,7 @@ extern "C" void* cpp_pgd_create(
     double learning_rate_decay,
     double momentum,
     double alpha,
+    double beta,
     const uint32_t* edge_vn,
     const uint32_t* check_offsets) {
   try {
@@ -184,6 +188,7 @@ extern "C" void* cpp_pgd_create(
         learning_rate_decay,
         momentum,
         alpha,
+        beta,
         edge_vn,
         check_offsets);
   } catch (...) {

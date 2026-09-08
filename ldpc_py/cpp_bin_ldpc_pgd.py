@@ -75,6 +75,7 @@ def load_library():
         ctypes.c_double,
         ctypes.c_double,
         ctypes.c_double,
+        ctypes.c_double,
         uint32_array,
         uint32_array,
     ]
@@ -115,6 +116,7 @@ class CppBinLdpcPgdDecoder(BinLdpcDecoderBase):
         self.learning_rate_decay = float(kwargs["learning_rate_decay"])
         self.momentum = float(kwargs["momentum"])
         self.alpha = float(kwargs["alpha"])
+        self.beta = float(kwargs["beta"])
 
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
@@ -124,6 +126,8 @@ class CppBinLdpcPgdDecoder(BinLdpcDecoderBase):
             raise ValueError("Momentum must be in [0, 1)")
         if self.alpha < 0:
             raise ValueError("Alpha must be non-negative")
+        if self.beta <= 0:
+            raise ValueError("Beta must be positive")
 
         edge_cn, edge_vn = np.nonzero(self.pcm)
         edge_cn = edge_cn.astype(np.uint32)
@@ -143,6 +147,7 @@ class CppBinLdpcPgdDecoder(BinLdpcDecoderBase):
             self.learning_rate_decay,
             self.momentum,
             self.alpha,
+            self.beta,
             self.edge_vn,
             self.check_offsets,
         )

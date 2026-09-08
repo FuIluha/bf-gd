@@ -14,6 +14,7 @@ class BinLdpcPgdDecoder(BinLdpcDecoderBase):
         self.learning_rate_decay = kwargs["learning_rate_decay"]
         self.momentum = kwargs["momentum"]
         self.alpha = kwargs["alpha"]
+        self.beta = kwargs["beta"]
 
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
@@ -23,6 +24,8 @@ class BinLdpcPgdDecoder(BinLdpcDecoderBase):
             raise ValueError("Momentum must be in [0, 1)")
         if self.alpha < 0:
             raise ValueError("Alpha must be non-negative")
+        if self.beta <= 0:
+            raise ValueError("Beta must be positive")
 
         self.edge_cn, self.edge_vn = np.nonzero(self.pcm)
         self.edge_cn = self.edge_cn.astype(np.int32)
@@ -38,9 +41,9 @@ class BinLdpcPgdDecoder(BinLdpcDecoderBase):
         ))
 
     @staticmethod
-    def probabilities(x, sigma_squared):
+    def probabilities(x, sigma_squared, beta):
         """Convert received-domain values to P(X=+1 | x)."""
-        scaled = 2 * x / sigma_squared
+        scaled = 2 * beta * x / sigma_squared
         return np.exp(-np.logaddexp(0, -scaled))
 
     def bpsk_syndrome(self, x):
@@ -81,7 +84,7 @@ class BinLdpcPgdDecoder(BinLdpcDecoderBase):
         return extrinsic_products
 
     def objective_gradient(self, x, received, sigma_squared):
-        probabilities = self.probabilities(x, sigma_squared)
+        probabilities = self.probabilities(x, sigma_squared, self.beta)
         bipolar_probabilities = 2 * probabilities - 1
         edge_products = self.extrinsic_bipolar_products(
             bipolar_probabilities
@@ -93,7 +96,7 @@ class BinLdpcPgdDecoder(BinLdpcDecoderBase):
         )
         return (
             self.alpha * received
-            + (4 / sigma_squared)
+            + (4 * self.beta / sigma_squared)
             * probabilities
             * (1 - probabilities)
             * check_product_sums

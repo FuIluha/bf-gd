@@ -23,6 +23,7 @@ DEFAULT_LEARNING_RATES = (0.01, 0.03, 0.05, 0.1, 0.2, 0.4)
 DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.05, 0.1, 0.25)
 DEFAULT_MOMENTA = (0.0, 0.3, 0.5, 0.7, 0.9)
 DEFAULT_ALPHAS = (0.25, 0.5, 1.0, 1.5, 2.0)
+DEFAULT_BETAS = (0.25, 0.5, 1.0, 2.0, 4.0)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -78,6 +79,11 @@ def parse_args():
         type=comma_separated_floats,
         default=DEFAULT_ALPHAS,
     )
+    parser.add_argument(
+        "--betas",
+        type=comma_separated_floats,
+        default=DEFAULT_BETAS,
+    )
     return parser.parse_args()
 
 
@@ -98,6 +104,8 @@ def validate_args(args):
         raise ValueError("all momenta must be in [0, 1)")
     if any(value < 0 for value in args.alphas):
         raise ValueError("all alpha values must be non-negative")
+    if any(value <= 0 for value in args.betas):
+        raise ValueError("all beta values must be positive")
 
 
 def load_base_experiment(config_path):
@@ -118,6 +126,7 @@ def parameter_grid(args, base_params):
         "learning_rate_decay": float(base_params["learning_rate_decay"]),
         "momentum": float(base_params["momentum"]),
         "alpha": float(base_params["alpha"]),
+        "beta": float(base_params["beta"]),
     }
     candidates = [baseline]
     for values in itertools.product(
@@ -125,12 +134,14 @@ def parameter_grid(args, base_params):
         args.learning_rate_decays,
         args.momenta,
         args.alphas,
+        args.betas,
     ):
         candidates.append({
             "learning_rate": values[0],
             "learning_rate_decay": values[1],
             "momentum": values[2],
             "alpha": values[3],
+            "beta": values[4],
         })
 
     unique_candidates = []

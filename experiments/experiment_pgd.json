@@ -13,7 +13,8 @@
         "learning_rate": 0.5,
         "learning_rate_decay": 0.001,
         "momentum": 0.7,
-        "alpha": 0.08
+        "alpha": 0.08,
+        "beta": 1.0
       }
     }
   },
