@@ -6,8 +6,11 @@ class BinLdpcSigmoidDecoder(BinLdpcDecoderBase):
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.theta = kwargs["theta"]
-        self.mu = kwargs["mu"]
         self.beta = kwargs.get("beta", 1.0)
+
+        if self.theta <= 0:
+            raise ValueError("Theta (learning rate) must be positive")
+
         self.edge_cn, self.edge_vn = np.nonzero(self.pcm)
 
         self.edge_cn = self.edge_cn.astype(np.int32)
@@ -32,55 +35,63 @@ class BinLdpcSigmoidDecoder(BinLdpcDecoderBase):
         )
 
     def objective_gradient(self, x, y):
-        """Calculate the score for moving each bit along the objective gradient."""
-        edge_values = x[self.edge_vn]
+        """Calculate gradient"""
+        s = np.tanh(self.beta * x / 2.0)
+        ds = (self.beta / 2.0) * (1.0 - s ** 2)
+
+        edge_s = s[self.edge_vn]
+        edge_ds = ds[self.edge_vn]
+
         check_products = np.multiply.reduceat(
-            edge_values,
+            edge_s,
             self.check_offsets[:-1],
         )
-        extrinsic_messages = check_products[self.edge_cn] * edge_values
-        sigmoid = 1.0 / (
-            1.0 + np.exp(-self.beta * extrinsic_messages)
+
+        zero_mask = edge_s == 0.0
+        zero_counts = np.add.reduceat(
+            zero_mask,
+            self.check_offsets[:-1],
         )
-        soft_messages = 2.0 * sigmoid - 1.0
+        extrinsic_products = np.zeros(self.edges_count, dtype=np.float64)
+
+        no_zero_checks = zero_counts == 0
+        no_zero_edges = no_zero_checks[self.edge_cn]
+        extrinsic_products[no_zero_edges] = (
+            check_products[self.edge_cn[no_zero_edges]]
+            / edge_s[no_zero_edges]
+        )
+
+        for check_index in np.flatnonzero(zero_counts == 1):
+            start = self.check_offsets[check_index]
+            stop = self.check_offsets[check_index + 1]
+            check_edge_values = edge_s[start:stop]
+            extrinsic_products[start:stop] = np.prod(
+                check_edge_values[check_edge_values != 0.0]
+            )
+
+        edge_contrib = edge_ds * extrinsic_products
         check_message_sum = np.bincount(
             self.edge_vn,
-            weights=soft_messages,
+            weights=edge_contrib,
             minlength=self.block_length,
         )
-        gradient = y + check_message_sum
-        return x * gradient
+
+        return y + check_message_sum
 
     def decode(self, llr_in, llr_out, rng=None):
-        mu = self.mu
         y = llr_in.copy()
+        x = y.copy()
 
-        # step 1
-        x = (2 * (y >= 0) - 1).astype(np.int8)  # sign, zero is positive
-        for iteration in range(self.n_iterations):
-            check_syndromes = self.bpsk_syndrome(x)
+        for iteration in range(self.n_iterations):  # iteration loop
+            hard_x = np.where(x >= 0, 1, -1).astype(np.int8)
+            check_syndromes = self.bpsk_syndrome(hard_x)  # syndrome
 
-            # step 2
             if np.all(check_syndromes == 1):
                 llr_out[:] = x
-                return iteration
+                return iteration  # exit the iteration loop;
 
-            # step 3
-            f1 = (np.dot(x, y) + np.sum(check_syndromes))
-            gradient = self.objective_gradient(x, y)
+            grad = self.objective_gradient(x, y)
+            x = x + self.theta * grad
 
-            if mu == 0:
-                # step 3.1 (multi-bit mode)
-                x[gradient < self.theta] *= -1
-                updated_check_syndromes = self.bpsk_syndrome(x)
-                f2 = (np.dot(x, y) + np.sum(updated_check_syndromes))
-                if f1 > f2:
-                    mu = 1
-            else:
-                # step 3.2 (single-bit mode)
-                x[np.argmin(gradient)] *= -1
-
-        # step 4
         llr_out[:] = x
         return self.n_iterations
-        
