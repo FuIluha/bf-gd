@@ -129,7 +129,13 @@ class LdpcExperimentInstance:
             self.codec.generate(rng, self.iwd, self.tx_bits)
         in_ber, in_ser = self.run_channel(snr_db, rng)
 
-        n_iter = self.codec.decode(self.llr_in, self.llr_out, rng=rng)
+        sigma_noise = self.channel.modulation.sigma_noise(snr_db)
+        n_iter = self.codec.decode(
+            self.llr_in,
+            self.llr_out,
+            rng=rng,
+            sigma_noise=sigma_noise,
+        )
         out_ber = self.output_ber(n_iter)
 
         return LdpcDataEntry(

@@ -1,19 +1,18 @@
 {
   "experiment": {
     "modulation": "bpsk",
-    "channel_output": "soft",
+    "channel_output": "received",
     "codec": {
       "type": "BinaryLdpcCodec",
-      "algorithm": "gradient descent decoder",
+      "algorithm": "probabilistic gradient descent decoder",
       "src_dir": "codes",
       "code": "ldpc_savin_4_8_12_24_Zc54.json",
       "n_iterations": 50,
       "llr_type": "float32",
       "decoder_params": {
-        "learning_rate": 4.4,
-        "learning_rate_decay": 0.0,
-        "momentum": 0.33,
-        "regularization": 0.25,
+        "learning_rate": 0.5,
+        "learning_rate_decay": 0.001,
+        "momentum": 0.7,
         "alpha": 0.08
       }
     }
