@@ -4,25 +4,25 @@
     "channel_output": "received",
     "codec": {
       "type": "BinaryLdpcCodec",
-      "algorithm": "probabilistic gradient descent decoder",
+      "algorithm": "cpp soft gradient descent bit-flipping",
       "src_dir": "codes",
-      "code": "ldpc_savin_4_8_12_24_Zc54.json",
+      "code": "ldpc_5g_k120_n600.json",
       "n_iterations": 50,
       "llr_type": "float32",
       "decoder_params": {
-        "learning_rate": 1.8,
-        "learning_rate_decay": 0.0,
-        "momentum": 0.0,
-        "alpha": 0.0,
-        "beta": 0.31
+        "learning_rate": 2.5,
+        "learning_rate_decay": 0.05,
+        "momentum": 0.8,
+        "regularization": 3,
+        "alpha": 1.8
       }
     }
   },
   "simulation": {
-    "n_workers": 12,
-    "snr_range": "-1:0.05:0.5",
+    "n_workers": 4,
+    "snr_range": "-10:0.05:2",
     "max_errors": 200,
-    "min_error_prob": 0.0000001,
+    "min_error_prob": 0.0001,
     "chunk_size": 10,
     "max_experiments": 10000000,
     "snr_precision": 3,

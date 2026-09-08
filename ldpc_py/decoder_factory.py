@@ -6,6 +6,7 @@ from .bin_ldpc_epmgdbf import BinLdpcEpmgdbfDecoder
 from .bin_ldpc_soft_gdbf import BinLdpcSoftGdbfDecoder
 from .bin_ldpc_gd import BinLdpcGdDecoder
 from .bin_ldpc_pgd import BinLdpcPgdDecoder
+from .bin_ldpc_ftgdbf import BinLdpcFtgdbfDecoder
 from .cpp_bin_ldpc_gd import CppBinLdpcGdDecoder
 from .cpp_bin_ldpc_pgd import CppBinLdpcPgdDecoder
 from .cpp_bin_ldpc_soft_gdbf import CppBinLdpcSoftGdbfDecoder
@@ -20,6 +21,7 @@ _DECODER_TYPES = {
     "soft gradient descent bit-flipping": BinLdpcSoftGdbfDecoder,
     "gradient descent decoder": BinLdpcGdDecoder,
     "probabilistic gradient descent decoder": BinLdpcPgdDecoder,
+    "fixed threshold gradient descent bit-flipping": BinLdpcFtgdbfDecoder,
     "cpp gradient descent decoder": CppBinLdpcGdDecoder,
     "cpp probabilistic gradient descent decoder": CppBinLdpcPgdDecoder,
     "cpp soft gradient descent bit-flipping": CppBinLdpcSoftGdbfDecoder,

@@ -1,4 +1,4 @@
-"""Plot FER curves for BP, min-sum, GD, soft GDBF, and PMGDBF decoders."""
+"""Plot FER curves for BP, min-sum, GD, PGD, soft GDBF, and PMGDBF."""
 
 import argparse
 from pathlib import Path
@@ -45,7 +45,8 @@ def load_fer(path):
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Plot simulated FER for BP, min-sum, GD, soft GDBF, and PMGDBF."
+            "Plot simulated FER for BP, min-sum, GD, PGD, soft GDBF, and "
+            "PMGDBF."
         )
     )
     parser.add_argument(
@@ -77,6 +78,11 @@ def parse_args():
         "--gd",
         type=Path,
         help="GD text result; added automatically when available",
+    )
+    parser.add_argument(
+        "--pgd",
+        type=Path,
+        help="PGD text result; added automatically when available",
     )
     parser.add_argument("-o", "--output", type=Path, default=DEFAULT_OUTPUT)
     return parser.parse_args()
@@ -111,7 +117,10 @@ def main():
         "*probabilistic momentum gradient descent bit-flipping*.txt"
     )
     gd_path = args.gd or latest_result(
-        "*gradient descent decoder*.txt", required=False
+        "*_gradient descent decoder_iter*.txt", required=False
+    )
+    pgd_path = args.pgd or latest_result(
+        "*probabilistic gradient descent decoder*.txt", required=False
     )
 
     figure, axis = plt.subplots(figsize=(9, 6))
@@ -129,6 +138,8 @@ def main():
     add_fer_curve(axis, pmgdbf_path, "PMGDBF", "tab:red", "D")
     if gd_path is not None:
         add_fer_curve(axis, gd_path, "GD", "tab:brown", "P")
+    if pgd_path is not None:
+        add_fer_curve(axis, pgd_path, "PGD", "tab:pink", "X")
 
     axis.set_yscale("log")
     axis.set_xlabel("SNR, dB")
@@ -149,6 +160,8 @@ def main():
     print(f"PMGDBF data: {pmgdbf_path}")
     if gd_path is not None:
         print(f"GD data: {gd_path}")
+    if pgd_path is not None:
+        print(f"PGD data: {pgd_path}")
     print(f"Plot saved to: {output_path}")
 
     plt.close(figure)
