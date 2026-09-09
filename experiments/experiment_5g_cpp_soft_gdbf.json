@@ -14,8 +14,7 @@
         "learning_rate_decay": 0.05,
         "momentum": 0.8,
         "regularization": 3,
-        "alpha": 1.8,
-        "gamma": 1.0
+        "alpha": 1.8
       }
     }
   },

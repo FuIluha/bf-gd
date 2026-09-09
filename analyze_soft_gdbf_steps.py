@@ -198,9 +198,9 @@ def main(mode="zero_crossings"):
                 learning_rate = decoder.learning_rate / np.sqrt(
                     1 + decoder.learning_rate_decay * iteration
                 )
-                optimizer_step = learning_rate * velocity
-                next_x = decoder.gamma * (x + optimizer_step)
-                step = next_x - x
+                step = learning_rate * velocity
+                next_x = x + step
+                next_x /= np.mean(np.abs(next_x))
                 next_hard_x = np.where(next_x >= 0, 1, -1).astype(np.int8)
 
                 if mode == "zero_crossings":
@@ -253,7 +253,7 @@ def main(mode="zero_crossings"):
         "not_decoded_words": args.trials - decoded_words,
         "iterations": n_iterations,
         "seed": args.seed,
-        "value": "gamma * (current_x + learning_rate * momentum_velocity) - current_x",
+        "value": "learning_rate * momentum_velocity",
         "analysis_mode": mode,
         "tracked_event": tracked_event,
         "value_dtype": "float32",
@@ -266,7 +266,6 @@ def main(mode="zero_crossings"):
             "momentum": decoder.momentum,
             "regularization": decoder.regularization,
             "alpha": decoder.alpha,
-            "gamma": decoder.gamma,
         },
     }
     (output_dir / "metadata.json").write_text(

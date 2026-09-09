@@ -16,7 +16,6 @@ class CppSoftGdbfDecoder {
       double momentum,
       double regularization,
       double alpha,
-      double gamma,
       const uint32_t* edge_vn,
       const uint32_t* check_offsets)
       : block_length_(block_length),
@@ -27,7 +26,6 @@ class CppSoftGdbfDecoder {
         momentum_(momentum),
         regularization_(regularization),
         alpha_(alpha),
-        gamma_(gamma),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         x_(block_length),
@@ -55,12 +53,17 @@ class CppSoftGdbfDecoder {
       const double current_learning_rate =
           learning_rate_ /
           std::sqrt(1.0 + learning_rate_decay_ * iteration);
+      double magnitude_sum = 0.0;
       for (uint32_t variable = 0; variable < block_length_; ++variable) {
         velocity_[variable] =
             momentum_ * velocity_[variable] +
             (1.0 - momentum_) * gradient_[variable];
-        x_[variable] = gamma_ * (
-            x_[variable] + current_learning_rate * velocity_[variable]);
+        x_[variable] += current_learning_rate * velocity_[variable];
+        magnitude_sum += std::abs(x_[variable]);
+      }
+      const double mean_magnitude = magnitude_sum / block_length_;
+      for (uint32_t variable = 0; variable < block_length_; ++variable) {
+        x_[variable] /= mean_magnitude;
       }
       if (!ValuesFit<Float>()) {
         return std::numeric_limits<uint32_t>::max();
@@ -168,7 +171,6 @@ class CppSoftGdbfDecoder {
   double momentum_;
   double regularization_;
   double alpha_;
-  double gamma_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
   std::vector<double> x_;
@@ -189,7 +191,6 @@ extern "C" void* cpp_soft_gdbf_create(
     double momentum,
     double regularization,
     double alpha,
-    double gamma,
     const uint32_t* edge_vn,
     const uint32_t* check_offsets) {
   try {
@@ -202,7 +203,6 @@ extern "C" void* cpp_soft_gdbf_create(
         momentum,
         regularization,
         alpha,
-        gamma,
         edge_vn,
         check_offsets);
   } catch (...) {
