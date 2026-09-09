@@ -8,7 +8,6 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
         self.learning_rate = kwargs["learning_rate"]
         self.learning_rate_decay = kwargs["learning_rate_decay"]
         self.momentum = kwargs["momentum"]
-        self.regularization = kwargs["regularization"]
         self.alpha = kwargs["alpha"]
 
         if self.learning_rate <= 0:
@@ -17,8 +16,6 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
             raise ValueError("Learning rate decay must be non-negative")
         if not 0 <= self.momentum < 1:
             raise ValueError("Momentum must be in [0, 1)")
-        if self.regularization < 0:
-            raise ValueError("Regularization must be non-negative")
 
         self.edge_cn, self.edge_vn = np.nonzero(self.pcm)
 
@@ -92,7 +89,6 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
         return (
             self.alpha * y
             + check_message_sum
-            - self.regularization * x
         )
 
     def decode(self, llr_in, llr_out, rng=None):
@@ -116,8 +112,10 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
             current_learning_rate = self.learning_rate / np.sqrt(
                 1 + self.learning_rate_decay * iteration
             )
-            x = x + current_learning_rate * velocity
-            x /= np.mean(np.abs(x))
+            next_x = x + current_learning_rate * velocity
+            next_x /= np.mean(np.abs(next_x))
+            velocity = (next_x - x) / current_learning_rate
+            x = next_x
 
         llr_out[:] = x
         return self.n_iterations

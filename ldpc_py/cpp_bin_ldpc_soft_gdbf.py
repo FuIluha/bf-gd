@@ -77,7 +77,6 @@ def load_library():
         ctypes.c_double,
         ctypes.c_double,
         ctypes.c_double,
-        ctypes.c_double,
         uint32_array,
         uint32_array,
     ]
@@ -106,7 +105,6 @@ class CppBinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
         self.learning_rate = float(kwargs["learning_rate"])
         self.learning_rate_decay = float(kwargs["learning_rate_decay"])
         self.momentum = float(kwargs["momentum"])
-        self.regularization = float(kwargs["regularization"])
         self.alpha = float(kwargs["alpha"])
 
         if self.learning_rate <= 0:
@@ -115,8 +113,6 @@ class CppBinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
             raise ValueError("Learning rate decay must be non-negative")
         if not 0 <= self.momentum < 1:
             raise ValueError("Momentum must be in [0, 1)")
-        if self.regularization < 0:
-            raise ValueError("Regularization must be non-negative")
 
         edge_cn, edge_vn = np.nonzero(self.pcm)
         edge_cn = edge_cn.astype(np.uint32)
@@ -135,7 +131,6 @@ class CppBinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
             self.learning_rate,
             self.learning_rate_decay,
             self.momentum,
-            self.regularization,
             self.alpha,
             self.edge_vn,
             self.check_offsets,

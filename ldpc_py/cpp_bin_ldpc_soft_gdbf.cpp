@@ -14,7 +14,6 @@ class CppSoftGdbfDecoder {
       double learning_rate,
       double learning_rate_decay,
       double momentum,
-      double regularization,
       double alpha,
       const uint32_t* edge_vn,
       const uint32_t* check_offsets)
@@ -24,7 +23,6 @@ class CppSoftGdbfDecoder {
         learning_rate_(learning_rate),
         learning_rate_decay_(learning_rate_decay),
         momentum_(momentum),
-        regularization_(regularization),
         alpha_(alpha),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
@@ -63,7 +61,13 @@ class CppSoftGdbfDecoder {
       }
       const double mean_magnitude = magnitude_sum / block_length_;
       for (uint32_t variable = 0; variable < block_length_; ++variable) {
-        x_[variable] /= mean_magnitude;
+        const double unnormalized_x = x_[variable];
+        const double previous_x =
+            unnormalized_x - current_learning_rate * velocity_[variable];
+        const double normalized_x = unnormalized_x / mean_magnitude;
+        velocity_[variable] =
+            (normalized_x - previous_x) / current_learning_rate;
+        x_[variable] = normalized_x;
       }
       if (!ValuesFit<Float>()) {
         return std::numeric_limits<uint32_t>::max();
@@ -92,9 +96,7 @@ class CppSoftGdbfDecoder {
   template <typename Float>
   void CalculateGradient(const Float* input) {
     for (uint32_t variable = 0; variable < block_length_; ++variable) {
-      gradient_[variable] =
-          alpha_ * static_cast<double>(input[variable]) -
-          regularization_ * x_[variable];
+      gradient_[variable] = alpha_ * static_cast<double>(input[variable]);
     }
 
     for (uint32_t check = 0; check < n_checks_; ++check) {
@@ -169,7 +171,6 @@ class CppSoftGdbfDecoder {
   double learning_rate_;
   double learning_rate_decay_;
   double momentum_;
-  double regularization_;
   double alpha_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
@@ -189,7 +190,6 @@ extern "C" void* cpp_soft_gdbf_create(
     double learning_rate,
     double learning_rate_decay,
     double momentum,
-    double regularization,
     double alpha,
     const uint32_t* edge_vn,
     const uint32_t* check_offsets) {
@@ -201,7 +201,6 @@ extern "C" void* cpp_soft_gdbf_create(
         learning_rate,
         learning_rate_decay,
         momentum,
-        regularization,
         alpha,
         edge_vn,
         check_offsets);

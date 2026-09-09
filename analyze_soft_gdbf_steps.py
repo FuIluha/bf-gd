@@ -222,6 +222,7 @@ def main(mode="zero_crossings"):
                 append_values(incorrect_files[iteration], incorrect_values)
                 correct_counts[iteration] += correct_values.size
                 incorrect_counts[iteration] += incorrect_values.size
+                velocity = (next_x - x) / learning_rate
                 x = next_x
             else:
                 hard_x = np.where(x >= 0, 1, -1).astype(np.int8)
@@ -254,6 +255,7 @@ def main(mode="zero_crossings"):
         "iterations": n_iterations,
         "seed": args.seed,
         "value": "learning_rate * momentum_velocity",
+        "stored_momentum": "(normalized_next_x - current_x) / learning_rate",
         "analysis_mode": mode,
         "tracked_event": tracked_event,
         "value_dtype": "float32",
@@ -264,7 +266,6 @@ def main(mode="zero_crossings"):
             "learning_rate": decoder.learning_rate,
             "learning_rate_decay": decoder.learning_rate_decay,
             "momentum": decoder.momentum,
-            "regularization": decoder.regularization,
             "alpha": decoder.alpha,
         },
     }
