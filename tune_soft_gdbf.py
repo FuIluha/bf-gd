@@ -24,6 +24,7 @@ DEFAULT_LEARNING_RATE_DECAYS = (0.05, 0.1, 0.5)
 DEFAULT_MOMENTA = (0.7, 0.8, 0.9)
 DEFAULT_REGULARIZATIONS = (2.0, 2.5, 3.0)
 DEFAULT_ALPHAS = (1.6, 1.7, 1.8)
+DEFAULT_GAMMAS = (1.0,)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -82,6 +83,11 @@ def parse_args():
         type=comma_separated_floats,
         default=DEFAULT_ALPHAS,
     )
+    parser.add_argument(
+        "--gammas",
+        type=comma_separated_floats,
+        default=DEFAULT_GAMMAS,
+    )
     return parser.parse_args()
 
 
@@ -102,6 +108,8 @@ def validate_args(args):
         raise ValueError("all momenta must be in [0, 1)")
     if any(value < 0 for value in args.regularizations):
         raise ValueError("all regularizations must be non-negative")
+    if any(value <= 0 for value in args.gammas):
+        raise ValueError("all gamma values must be positive")
 
 
 def load_base_experiment(config_path):
@@ -121,6 +129,7 @@ def parameter_grid(args, base_params):
         "momentum": float(base_params["momentum"]),
         "regularization": float(base_params["regularization"]),
         "alpha": float(base_params["alpha"]),
+        "gamma": float(base_params.get("gamma", 1.0)),
     }
     candidates = [baseline]
     for values in itertools.product(
@@ -129,6 +138,7 @@ def parameter_grid(args, base_params):
         args.momenta,
         args.regularizations,
         args.alphas,
+        args.gammas,
     ):
         candidates.append({
             "learning_rate": values[0],
@@ -136,6 +146,7 @@ def parameter_grid(args, base_params):
             "momentum": values[2],
             "regularization": values[3],
             "alpha": values[4],
+            "gamma": values[5],
         })
 
     unique_candidates = []

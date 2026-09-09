@@ -16,6 +16,7 @@ class CppSoftGdbfDecoder {
       double momentum,
       double regularization,
       double alpha,
+      double gamma,
       const uint32_t* edge_vn,
       const uint32_t* check_offsets)
       : block_length_(block_length),
@@ -26,6 +27,7 @@ class CppSoftGdbfDecoder {
         momentum_(momentum),
         regularization_(regularization),
         alpha_(alpha),
+        gamma_(gamma),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         x_(block_length),
@@ -57,7 +59,8 @@ class CppSoftGdbfDecoder {
         velocity_[variable] =
             momentum_ * velocity_[variable] +
             (1.0 - momentum_) * gradient_[variable];
-        x_[variable] += current_learning_rate * velocity_[variable];
+        x_[variable] = gamma_ * (
+            x_[variable] + current_learning_rate * velocity_[variable]);
       }
       if (!ValuesFit<Float>()) {
         return std::numeric_limits<uint32_t>::max();
@@ -165,6 +168,7 @@ class CppSoftGdbfDecoder {
   double momentum_;
   double regularization_;
   double alpha_;
+  double gamma_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
   std::vector<double> x_;
@@ -185,6 +189,7 @@ extern "C" void* cpp_soft_gdbf_create(
     double momentum,
     double regularization,
     double alpha,
+    double gamma,
     const uint32_t* edge_vn,
     const uint32_t* check_offsets) {
   try {
@@ -197,6 +202,7 @@ extern "C" void* cpp_soft_gdbf_create(
         momentum,
         regularization,
         alpha,
+        gamma,
         edge_vn,
         check_offsets);
   } catch (...) {
