@@ -7,9 +7,13 @@ class BinLdpcSigmoidDecoder(BinLdpcDecoderBase):
         super().__init__(alist_filename, **kwargs)
         self.theta = kwargs["theta"]
         self.beta = kwargs.get("beta", 1.0)
+        self.alpha = kwargs.get("alpha", 1.0)
+        self.regularization = kwargs.get("regularization", 0.1)
 
         if self.theta <= 0:
             raise ValueError("Theta (learning rate) must be positive")
+        if self.regularization < 0:
+            raise ValueError("Regularization must be non-negative")
 
         self.edge_cn, self.edge_vn = np.nonzero(self.pcm)
 
@@ -35,7 +39,7 @@ class BinLdpcSigmoidDecoder(BinLdpcDecoderBase):
         )
 
     def objective_gradient(self, x, y):
-        """Calculate gradient"""
+        """Calculate gradient """
         s = np.tanh(self.beta * x / 2.0)
         ds = (self.beta / 2.0) * (1.0 - s ** 2)
 
@@ -76,7 +80,7 @@ class BinLdpcSigmoidDecoder(BinLdpcDecoderBase):
             minlength=self.block_length,
         )
 
-        return y + check_message_sum
+        return self.alpha * y + check_message_sum - self.regularization * x
 
     def decode(self, llr_in, llr_out, rng=None):
         y = llr_in.copy()
