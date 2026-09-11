@@ -43,6 +43,7 @@ class BinLdpcSigmoid1Decoder(BinLdpcDecoderBase):
         )
 
     def sigmoid_syndrome(self, z):
+        # мягкая биполярная версия каждого бита: tanh(beta*z/2) = 2*sigmoid(beta*z) - 1
         s = 2.0 / (1.0 + np.exp(-self.beta * z)) - 1.0
         s = np.clip(s, -1.0 + 1e-12, 1.0 - 1e-12)
 
@@ -50,6 +51,7 @@ class BinLdpcSigmoid1Decoder(BinLdpcDecoderBase):
         signs = np.sign(s_edges)
         log_abs = np.log(np.abs(s_edges))
 
+        # произведение по каждой проверке (как в bpsk_syndrome, но от мягких значений)
         prod_signs = np.multiply.reduceat(signs, self.check_offsets[:-1])
         sum_log_abs = np.add.reduceat(log_abs, self.check_offsets[:-1])
 
