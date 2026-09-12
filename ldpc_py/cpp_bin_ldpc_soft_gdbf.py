@@ -76,7 +76,7 @@ def load_library():
         ctypes.c_double,
         ctypes.c_double,
         ctypes.c_double,
-        ctypes.c_double,
+        ctypes.c_double,  # l2
         uint32_array,
         uint32_array,
     ]
@@ -104,15 +104,16 @@ class CppBinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
         super().__init__(alist_filename, **kwargs)
         self.learning_rate = float(kwargs["learning_rate"])
         self.learning_rate_decay = float(kwargs["learning_rate_decay"])
-        self.momentum = float(kwargs["momentum"])
         self.alpha = float(kwargs["alpha"])
+
+        self.l2 = float(kwargs.get("l2", 1.0))
+        if not np.isfinite(self.l2) or self.l2 < 0:
+            raise ValueError("l2 must be finite and non-negative")
 
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
         if self.learning_rate_decay < 0:
             raise ValueError("Learning rate decay must be non-negative")
-        if not 0 <= self.momentum < 1:
-            raise ValueError("Momentum must be in [0, 1)")
 
         edge_cn, edge_vn = np.nonzero(self.pcm)
         edge_cn = edge_cn.astype(np.uint32)
@@ -130,8 +131,8 @@ class CppBinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
             self.n_iterations,
             self.learning_rate,
             self.learning_rate_decay,
-            self.momentum,
             self.alpha,
+            self.l2,
             self.edge_vn,
             self.check_offsets,
         )

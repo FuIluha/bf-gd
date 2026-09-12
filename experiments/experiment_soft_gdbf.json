@@ -10,10 +10,10 @@
       "n_iterations": 300,
       "llr_type": "float32",
       "decoder_params": {
-        "learning_rate": 3,
-        "learning_rate_decay": 0.1,
-        "momentum": 0.8,
-        "alpha": 1.7
+        "learning_rate": 0.5,
+        "learning_rate_decay": 0.0,
+        "alpha": 1.0,
+        "l2": 1.0
       }
     }
   },

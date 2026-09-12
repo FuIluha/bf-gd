@@ -13,8 +13,8 @@ class CppSoftGdbfDecoder {
       uint32_t n_iterations,
       double learning_rate,
       double learning_rate_decay,
-      double momentum,
       double alpha,
+      double l2,
       const uint32_t* edge_vn,
       const uint32_t* check_offsets)
       : block_length_(block_length),
@@ -22,13 +22,14 @@ class CppSoftGdbfDecoder {
         n_iterations_(n_iterations),
         learning_rate_(learning_rate),
         learning_rate_decay_(learning_rate_decay),
-        momentum_(momentum),
         alpha_(alpha),
+        l2_(l2),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         x_(block_length),
         gradient_(block_length),
-        velocity_(block_length),
+        variable_messages_(check_offsets[n_checks]),
+        check_messages_(check_offsets[n_checks]),
         check_signs_(n_checks),
         first_minima_(n_checks),
         second_minima_(n_checks),
@@ -36,9 +37,13 @@ class CppSoftGdbfDecoder {
 
   template <typename Float>
   uint32_t Decode(const Float* input, Float* output) {
-    std::fill(velocity_.begin(), velocity_.end(), 0.0);
+    std::fill(check_messages_.begin(), check_messages_.end(), 0.0);
     for (uint32_t variable = 0; variable < block_length_; ++variable) {
       x_[variable] = static_cast<double>(input[variable]);
+    }
+
+    for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
+      variable_messages_[edge] = static_cast<double>(input[edge_vn_[edge]]);
     }
 
     for (uint32_t iteration = 0; iteration < n_iterations_; ++iteration) {
@@ -51,17 +56,12 @@ class CppSoftGdbfDecoder {
       const double current_learning_rate =
           learning_rate_ /
           std::sqrt(1.0 + learning_rate_decay_ * iteration);
-      double magnitude_sum = 0.0;
-      for (uint32_t variable = 0; variable < block_length_; ++variable) {
-        velocity_[variable] =
-            momentum_ * velocity_[variable] +
-            (1.0 - momentum_) * gradient_[variable];
-        x_[variable] += current_learning_rate * velocity_[variable];
-        magnitude_sum += std::abs(x_[variable]);
+      for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
+        variable_messages_[edge] += current_learning_rate * (
+            gradient_[edge_vn_[edge]] - check_messages_[edge] - l2_ * variable_messages_[edge]);
       }
-      const double mean_magnitude = magnitude_sum / block_length_;
       for (uint32_t variable = 0; variable < block_length_; ++variable) {
-        x_[variable] /= mean_magnitude;
+        x_[variable] += current_learning_rate * (gradient_[variable] - l2_ * x_[variable]);
       }
       if (!ValuesFit<Float>()) {
         return std::numeric_limits<uint32_t>::max();
@@ -101,7 +101,7 @@ class CppSoftGdbfDecoder {
 
       for (uint32_t edge = check_offsets_[check];
            edge < check_offsets_[check + 1]; ++edge) {
-        const double value = x_[edge_vn_[edge]];
+        const double value = variable_messages_[edge];
         sign_product *= value < 0.0 ? -1 : 1;
         const double magnitude = std::abs(value);
         if (magnitude < first_minimum) {
@@ -126,7 +126,7 @@ class CppSoftGdbfDecoder {
       for (uint32_t edge = check_offsets_[check];
            edge < check_offsets_[check + 1]; ++edge) {
         const uint32_t variable = edge_vn_[edge];
-        const double value = x_[variable];
+        const double value = variable_messages_[edge];
         const bool unique_first_minimum =
             std::abs(value) == first_minimum &&
             first_minimum_counts_[check] == 1;
@@ -135,7 +135,8 @@ class CppSoftGdbfDecoder {
             : first_minimum;
         const int extrinsic_sign =
             check_signs_[check] * (value < 0.0 ? -1 : 1);
-        gradient_[variable] += extrinsic_sign * magnitude;
+        check_messages_[edge] = extrinsic_sign * magnitude;
+        gradient_[variable] += check_messages_[edge];
       }
     }
   }
@@ -148,6 +149,9 @@ class CppSoftGdbfDecoder {
       if (!std::isfinite(value) || std::abs(value) > limit) {
         return false;
       }
+    }
+    for (const double value : variable_messages_) {
+      if (!std::isfinite(value)) return false;
     }
     return true;
   }
@@ -164,13 +168,14 @@ class CppSoftGdbfDecoder {
   uint32_t n_iterations_;
   double learning_rate_;
   double learning_rate_decay_;
-  double momentum_;
   double alpha_;
+  double l2_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
   std::vector<double> x_;
   std::vector<double> gradient_;
-  std::vector<double> velocity_;
+  std::vector<double> variable_messages_;
+  std::vector<double> check_messages_;
   std::vector<int> check_signs_;
   std::vector<double> first_minima_;
   std::vector<double> second_minima_;
@@ -183,8 +188,8 @@ extern "C" void* cpp_soft_gdbf_create(
     uint32_t n_iterations,
     double learning_rate,
     double learning_rate_decay,
-    double momentum,
     double alpha,
+    double l2,
     const uint32_t* edge_vn,
     const uint32_t* check_offsets) {
   try {
@@ -194,8 +199,8 @@ extern "C" void* cpp_soft_gdbf_create(
         n_iterations,
         learning_rate,
         learning_rate_decay,
-        momentum,
         alpha,
+        l2,
         edge_vn,
         check_offsets);
   } catch (...) {

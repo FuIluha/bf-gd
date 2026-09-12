@@ -98,7 +98,7 @@ def plot_histogram(iteration_dir, bins, correct_label, incorrect_label, title):
         )
     axis.axvline(0, color="black", linestyle="--", linewidth=1.2)
     axis.set_xlim(-5.0, 5.0)
-    axis.set_xlabel(r"step$_n$ = $\eta_t v_n$")
+    axis.set_xlabel(r"step$_n$ = $\eta_t (g_n - \lambda x_n)$")
     axis.set_ylabel("Probability density")
     axis.set_title(f"{title}, iteration {int(iteration_dir.name):03d}")
     axis.grid(True, linestyle="--", alpha=0.3)
@@ -178,7 +178,7 @@ def main(mode="zero_crossings"):
 
             received = experiment.llr_in.copy()
             x = received.copy()
-            velocity = np.zeros_like(x)
+            outgoing = received[decoder.edge_vn].astype(np.float64, copy=True)
             transmitted_symbols = (
                 1 - 2 * experiment.tx_bits.astype(np.int8)
             )
@@ -190,17 +190,8 @@ def main(mode="zero_crossings"):
                     break
 
                 active_word_counts[iteration] += 1
-                gradient = decoder.objective_gradient(x, received)
-                velocity = (
-                    decoder.momentum * velocity
-                    + (1 - decoder.momentum) * gradient
-                )
-                learning_rate = decoder.learning_rate / np.sqrt(
-                    1 + decoder.learning_rate_decay * iteration
-                )
-                step = learning_rate * velocity
-                next_x = x + step
-                next_x /= np.mean(np.abs(next_x))
+                next_x, outgoing = decoder.update_state(received, x, outgoing, iteration)
+                step = next_x - x
                 next_hard_x = np.where(next_x >= 0, 1, -1).astype(np.int8)
 
                 if mode == "zero_crossings":
@@ -253,8 +244,7 @@ def main(mode="zero_crossings"):
         "not_decoded_words": args.trials - decoded_words,
         "iterations": n_iterations,
         "seed": args.seed,
-        "value": "learning_rate * momentum_velocity",
-        "stored_momentum": "momentum * previous_velocity + (1 - momentum) * gradient",
+        "value": "learning_rate * (gradient - l2 * x)",
         "analysis_mode": mode,
         "tracked_event": tracked_event,
         "value_dtype": "float32",
@@ -264,8 +254,8 @@ def main(mode="zero_crossings"):
         "decoder_params": {
             "learning_rate": decoder.learning_rate,
             "learning_rate_decay": decoder.learning_rate_decay,
-            "momentum": decoder.momentum,
             "alpha": decoder.alpha,
+            "l2": decoder.l2,
         },
     }
     (output_dir / "metadata.json").write_text(

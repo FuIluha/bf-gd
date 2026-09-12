@@ -17,14 +17,13 @@ from simulator_awgn_python.tools import load_json
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_soft_gdbf.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_soft_gdbf_coarse.txt"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_soft_gdbf_l2.txt"
 
-# Broad first pass: 9 * 6 * 8 * 9 = 3888 combinations.
-# Include the current baseline and controls without decay, momentum, or channel term.
-DEFAULT_LEARNING_RATES = (0.1, 0.25, 0.5, 1.0, 2.0, 2.5, 4.0, 8.0, 16.0)
-DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.05, 0.1, 0.5, 1.0)
-DEFAULT_MOMENTA = (0.0, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.98)
-DEFAULT_ALPHAS = (0.0, 0.25, 0.5, 1.0, 1.5, 1.8, 2.5, 4.0, 8.0)
+# 6 * 4 * 5 * 7 = 840 combinations, including ordinary min-sum dynamics.
+DEFAULT_LEARNING_RATES = (0.05, 0.1, 0.25, 0.5, 0.75, 1.0)
+DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.05, 0.1)
+DEFAULT_ALPHAS = (0.25, 0.5, 1.0, 2.0, 4.0)
+DEFAULT_L2 = (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -51,9 +50,9 @@ def parse_args():
         )
     )
     parser.add_argument("-c", "--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--snr", type=float, default=0.5)
+    parser.add_argument("--snr", type=float, default=-1.0)
     parser.add_argument("--trials", type=int, default=100_000_000)
-    parser.add_argument("--max-errors", type=int, default=50)
+    parser.add_argument("--max-errors", type=int, default=100)
     parser.add_argument("--workers", type=int)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -69,19 +68,17 @@ def parse_args():
         default=DEFAULT_LEARNING_RATE_DECAYS,
     )
     parser.add_argument(
-        "--momenta",
-        type=comma_separated_floats,
-        default=DEFAULT_MOMENTA,
-    )
-    parser.add_argument(
         "--alphas",
         type=comma_separated_floats,
         default=DEFAULT_ALPHAS,
     )
+    parser.add_argument("--l2-values", type=comma_separated_floats, default=DEFAULT_L2)
     return parser.parse_args()
 
 
 def validate_args(args):
+    if any(not np.isfinite(v) or v < 0 for v in args.l2_values):
+        raise ValueError("l2 values must be finite and non-negative")
     if args.trials <= 0:
         raise ValueError("--trials must be positive")
     if args.max_errors <= 0:
@@ -94,8 +91,6 @@ def validate_args(args):
         raise ValueError("all learning rates must be positive")
     if any(value < 0 for value in args.learning_rate_decays):
         raise ValueError("all learning-rate decays must be non-negative")
-    if any(not 0 <= value < 1 for value in args.momenta):
-        raise ValueError("all momenta must be in [0, 1)")
 
 
 def load_base_experiment(config_path):
@@ -112,21 +107,21 @@ def parameter_grid(args, base_params):
     baseline = {
         "learning_rate": float(base_params["learning_rate"]),
         "learning_rate_decay": float(base_params["learning_rate_decay"]),
-        "momentum": float(base_params["momentum"]),
         "alpha": float(base_params["alpha"]),
+        "l2": float(base_params.get("l2", 1.0)),
     }
     candidates = [baseline]
     for values in itertools.product(
         args.learning_rates,
         args.learning_rate_decays,
-        args.momenta,
         args.alphas,
+        args.l2_values,
     ):
         candidates.append({
             "learning_rate": values[0],
             "learning_rate_decay": values[1],
-            "momentum": values[2],
-            "alpha": values[3],
+            "alpha": values[2],
+            "l2": values[3],
         })
 
     unique_candidates = []
@@ -247,6 +242,7 @@ def main():
         flush=True,
     )
 
+    output_path.with_suffix(".jsonl").write_text("", encoding="utf-8")
     best_result = None
     context = mp.get_context("spawn")
     with context.Pool(
@@ -266,6 +262,8 @@ def main():
             chunksize=1,
         )
         for completed, result in enumerate(results, start=1):
+            with output_path.with_suffix(".jsonl").open("a", encoding="utf-8") as log:
+                log.write(json.dumps(result) + "\n")
             if result["invalid"]:
                 params = json.dumps(result["decoder_params"], separators=(",", ":"))
                 print(

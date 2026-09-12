@@ -2,20 +2,21 @@ import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
 
 class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
-    """Implementation of projected gradient ascent bit-flipping decoder."""
+    """Extrinsic edge-state decoder with L2 decay of messages and decisions."""
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.learning_rate = kwargs["learning_rate"]
         self.learning_rate_decay = kwargs["learning_rate_decay"]
-        self.momentum = kwargs["momentum"]
         self.alpha = kwargs["alpha"]
+
+        self.l2 = float(kwargs.get("l2", 1.0))
+        if not np.isfinite(self.l2) or self.l2 < 0:
+            raise ValueError("l2 must be finite and non-negative")
 
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
         if self.learning_rate_decay < 0:
             raise ValueError("Learning rate decay must be non-negative")
-        if not 0 <= self.momentum < 1:
-            raise ValueError("Momentum must be in [0, 1)")
 
         self.edge_cn, self.edge_vn = np.nonzero(self.pcm)
 
@@ -40,9 +41,8 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
             self.check_offsets[:-1],
         )
 
-    def check_to_variable_messages(self, x):
+    def check_to_variable_messages(self, edge_values):
         """Calculate min-sum check-to-variable messages."""
-        edge_values = x[self.edge_vn]
         edge_signs = np.where(edge_values < 0, -1, 1)
         edge_magnitudes = np.abs(edge_values)
 
@@ -78,23 +78,31 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
         extrinsic_signs = check_signs[self.edge_cn] * edge_signs
         return extrinsic_signs * extrinsic_magnitudes
 
-    def objective_gradient(self, x, y):
-        """Calculate a received-scale soft bit-update direction."""
-        edge_messages = self.check_to_variable_messages(x)
-        check_message_sum = np.bincount(
-            self.edge_vn,
-            weights=edge_messages,
-            minlength=self.block_length,
-        )
-        return (
-            self.alpha * y
-            + check_message_sum
+    def variable_to_check_messages(self, y, check_messages):
+        """Exclude the recipient check from each outgoing edge message."""
+        total = self.objective_gradient(y, check_messages)
+        return total[self.edge_vn] - check_messages
+
+    def objective_gradient(self, y, check_messages):
+        """Channel plus all current check messages, used as the bit-update direction."""
+        return self.alpha * y + np.bincount(
+            self.edge_vn, weights=check_messages, minlength=self.block_length,
         )
 
+    def update_state(self, y, x, outgoing, iteration):
+        incoming = self.check_to_variable_messages(outgoing)
+        total = self.objective_gradient(y, incoming)
+        eta = self.learning_rate / np.sqrt(1 + self.learning_rate_decay * iteration)
+        next_q = outgoing + eta * (total[self.edge_vn] - incoming - self.l2 * outgoing)
+        next_x = x + eta * (total - self.l2 * x)
+        if not np.all(np.isfinite(next_q)) or not np.all(np.isfinite(next_x)):
+            raise FloatingPointError("Non-finite soft GDBF state")
+        return next_x, next_q
+
     def decode(self, llr_in, llr_out, rng=None):
-        y = llr_in.copy()
+        y = llr_in.astype(np.float64, copy=True)
         x = y.copy()
-        velocity = np.zeros_like(x)
+        outgoing = y[self.edge_vn].copy()
 
         for iteration in range(self.n_iterations): # iteration loop
             hard_x = np.where(x >= 0, 1, -1).astype(np.int8)
@@ -104,17 +112,7 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
                 llr_out[:] = x
                 return iteration # exit the iteration loop;
 
-            grad = self.objective_gradient(x, y)
-            velocity = (
-                self.momentum * velocity
-                + (1 - self.momentum) * grad
-            )
-            current_learning_rate = self.learning_rate / np.sqrt(
-                1 + self.learning_rate_decay * iteration
-            )
-            next_x = x + current_learning_rate * velocity
-            next_x /= np.mean(np.abs(next_x))
-            x = next_x
+            x, outgoing = self.update_state(y, x, outgoing, iteration)
 
         llr_out[:] = x
         return self.n_iterations
