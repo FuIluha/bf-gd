@@ -114,7 +114,6 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
             )
             next_x = x + current_learning_rate * velocity
             next_x /= np.mean(np.abs(next_x))
-            velocity = (next_x - x) / current_learning_rate
             x = next_x
 
         llr_out[:] = x

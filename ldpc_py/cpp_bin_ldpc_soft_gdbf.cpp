@@ -61,13 +61,7 @@ class CppSoftGdbfDecoder {
       }
       const double mean_magnitude = magnitude_sum / block_length_;
       for (uint32_t variable = 0; variable < block_length_; ++variable) {
-        const double unnormalized_x = x_[variable];
-        const double previous_x =
-            unnormalized_x - current_learning_rate * velocity_[variable];
-        const double normalized_x = unnormalized_x / mean_magnitude;
-        velocity_[variable] =
-            (normalized_x - previous_x) / current_learning_rate;
-        x_[variable] = normalized_x;
+        x_[variable] /= mean_magnitude;
       }
       if (!ValuesFit<Float>()) {
         return std::numeric_limits<uint32_t>::max();
