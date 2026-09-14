@@ -134,7 +134,7 @@ def validate_args(args):
         raise ValueError("all beta values must be positive")
     if any(probability <= 0 or probability > 1 for probability in args.probabilities):
         raise ValueError("all probabilities must be in (0, 1]")
-    if any(reg <= 0 for reg in args.regularizations):
+    if any(reg < 0 for reg in args.regularizations):
         raise ValueError("all regularization values must be non-negative")
 
 
