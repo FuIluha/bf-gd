@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
-#SBATCH --job-name=soft-gdbf-tune
-#SBATCH --output=logs/tune_soft_gdbf_%j.out
-#SBATCH --error=logs/tune_soft_gdbf_%j.err
+# Submit the GDMS parameter search to Slurm.
+
+#SBATCH --job-name=gdms-tune
+#SBATCH --output=logs/tune_gdms_%j.out
+#SBATCH --error=logs/tune_gdms_%j.err
 #SBATCH --partition=amd
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -29,7 +31,7 @@ if [[ ! -x "$python_bin" ]] || ! "$python_bin" --version >/dev/null 2>&1; then
     exit 1
 fi
 
-exec srun "$python_bin" tune_soft_gdbf.py \
-    --config experiments/experiment_cpp_soft_gdbf.json \
+exec srun "$python_bin" tune_gdms.py \
+    --config experiments/experiment_cpp_gdms.json \
     --workers "${SLURM_CPUS_PER_TASK:-128}" \
     "$@"

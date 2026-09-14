@@ -1,4 +1,4 @@
-"""ctypes wrapper for the C++ soft GDBF decoder."""
+"""ctypes wrapper for the C++ gradient-descent min-sum decoder."""
 
 import ctypes
 import hashlib
@@ -15,13 +15,13 @@ from .bin_ldpc import BinLdpcDecoderBase
 SOURCE_PATH = Path(__file__).with_suffix(".cpp")
 SOURCE_HASH = hashlib.sha256(SOURCE_PATH.read_bytes()).hexdigest()[:16]
 LIBRARY_PATH = Path(tempfile.gettempdir()) / (
-    f"bf_gd_cpp_soft_gdbf_{SOURCE_HASH}.so"
+    f"bf_gd_cpp_gdms_{SOURCE_HASH}.so"
 )
 INVALID_RESULT = np.iinfo(np.uint32).max
 
 
 def lib_compile():
-    """Compile the C++ soft GDBF shared library."""
+    """Compile the C++ GDMS shared library."""
     if LIBRARY_PATH.exists():
         return
     temporary_library = Path(f"{LIBRARY_PATH}.{os.getpid()}.tmp")
@@ -68,8 +68,8 @@ def load_library():
         flags="C_CONTIGUOUS",
     )
 
-    library.cpp_soft_gdbf_create.restype = ctypes.c_void_p
-    library.cpp_soft_gdbf_create.argtypes = [
+    library.cpp_gdms_create.restype = ctypes.c_void_p
+    library.cpp_gdms_create.argtypes = [
         ctypes.c_uint32,
         ctypes.c_uint32,
         ctypes.c_uint32,
@@ -80,25 +80,25 @@ def load_library():
         uint32_array,
         uint32_array,
     ]
-    library.cpp_soft_gdbf_decode_float32.restype = ctypes.c_uint32
-    library.cpp_soft_gdbf_decode_float32.argtypes = [
+    library.cpp_gdms_decode_float32.restype = ctypes.c_uint32
+    library.cpp_gdms_decode_float32.argtypes = [
         ctypes.c_void_p,
         float32_array,
         float32_array,
     ]
-    library.cpp_soft_gdbf_decode_float64.restype = ctypes.c_uint32
-    library.cpp_soft_gdbf_decode_float64.argtypes = [
+    library.cpp_gdms_decode_float64.restype = ctypes.c_uint32
+    library.cpp_gdms_decode_float64.argtypes = [
         ctypes.c_void_p,
         float64_array,
         float64_array,
     ]
-    library.cpp_soft_gdbf_free.restype = None
-    library.cpp_soft_gdbf_free.argtypes = [ctypes.c_void_p]
+    library.cpp_gdms_free.restype = None
+    library.cpp_gdms_free.argtypes = [ctypes.c_void_p]
     return library
 
 
-class CppBinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
-    """C++ implementation of the soft GDBF decoder."""
+class CppBinLdpcGdmsDecoder(BinLdpcDecoderBase):
+    """C++ implementation of the GDMS decoder."""
 
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
@@ -125,7 +125,7 @@ class CppBinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
         )
 
         self._library = load_library()
-        self._decoder = self._library.cpp_soft_gdbf_create(
+        self._decoder = self._library.cpp_gdms_create(
             self.block_length,
             self.n_checks,
             self.n_iterations,
@@ -137,30 +137,30 @@ class CppBinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
             self.check_offsets,
         )
         if not self._decoder:
-            raise RuntimeError("Failed to create C++ soft GDBF decoder")
+            raise RuntimeError("Failed to create C++ GDMS decoder")
 
     def decode(self, llr_in, llr_out, rng=None):
         if llr_in.dtype != llr_out.dtype:
             raise TypeError("llr_in and llr_out must have the same dtype")
 
         if llr_in.dtype == np.float32:
-            result = self._library.cpp_soft_gdbf_decode_float32(
+            result = self._library.cpp_gdms_decode_float32(
                 self._decoder,
                 llr_in,
                 llr_out,
             )
         elif llr_in.dtype == np.float64:
-            result = self._library.cpp_soft_gdbf_decode_float64(
+            result = self._library.cpp_gdms_decode_float64(
                 self._decoder,
                 llr_in,
                 llr_out,
             )
         else:
-            raise TypeError("C++ soft GDBF supports only float32 and float64 LLRs")
+            raise TypeError("C++ GDMS supports only float32 and float64 LLRs")
 
         if result == INVALID_RESULT:
             raise FloatingPointError(
-                "soft GDBF state exceeded the output floating-point range"
+                "GDMS state exceeded the output floating-point range"
             )
         return result
 
@@ -168,5 +168,9 @@ class CppBinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
         decoder = getattr(self, "_decoder", None)
         library = getattr(self, "_library", None)
         if decoder and library:
-            library.cpp_soft_gdbf_free(decoder)
+            library.cpp_gdms_free(decoder)
             self._decoder = None
+
+
+# Backward-compatible class name for downstream code using the legacy API.
+CppBinLdpcSoftGdbfDecoder = CppBinLdpcGdmsDecoder

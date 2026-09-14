@@ -1,4 +1,4 @@
-"""Grid-search the C++ soft GDBF parameters at one SNR point."""
+"""Grid-search the C++ gradient-descent min-sum parameters at one SNR point."""
 
 import argparse
 import copy
@@ -11,13 +11,13 @@ from pathlib import Path
 import numpy as np
 
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
-from ldpc_py.cpp_bin_ldpc_soft_gdbf import lib_compile as soft_gdbf_compile
+from ldpc_py.cpp_bin_ldpc_gdms import lib_compile as gdms_compile
 from simulator_awgn_python.tools import load_json
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_soft_gdbf.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_soft_gdbf_l2.txt"
+DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gdms.json"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gdms_l2.txt"
 
 # 6 * 4 * 5 * 7 = 840 combinations, including ordinary min-sum dynamics.
 DEFAULT_LEARNING_RATES = (0.05, 0.1, 0.25, 0.5, 0.75, 1.0)
@@ -45,7 +45,7 @@ def comma_separated_floats(value):
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Search C++ soft GDBF hyperparameters using FER at a fixed SNR. "
+            "Search C++ GDMS hyperparameters using FER at a fixed SNR. "
             "Every new best result is saved immediately."
         )
     )
@@ -96,10 +96,11 @@ def validate_args(args):
 def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
-    if experiment["codec"].get("algorithm") != (
-        "cpp soft gradient descent bit-flipping"
-    ):
-        raise ValueError("the selected config must use the C++ soft GDBF decoder")
+    if experiment["codec"].get("algorithm") not in {
+        "cpp gradient descent min-sum",
+        "cpp soft gradient descent bit-flipping",
+    }:
+        raise ValueError("the selected config must use the C++ GDMS decoder")
     return experiment, config.get("simulation", {})
 
 
@@ -225,7 +226,7 @@ def main():
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
-    soft_gdbf_compile()
+    gdms_compile()
     candidates = parameter_grid(
         args,
         base_experiment["codec"]["decoder_params"],
@@ -236,7 +237,7 @@ def main():
     workers = min(args.workers or default_workers(simulation_config), len(candidates))
     output_path = args.output.resolve()
     print(
-        f"Soft GDBF search: SNR={args.snr:g} dB, "
+        f"GDMS search: SNR={args.snr:g} dB, "
         f"max_trials={args.trials}, target_errors={args.max_errors}, "
         f"parameter_sets={len(candidates)}, workers={workers}",
         flush=True,

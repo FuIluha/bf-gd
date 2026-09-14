@@ -5,9 +5,10 @@
 #include <new>
 #include <vector>
 
-class CppSoftGdbfDecoder {
+// Gradient-descent min-sum decoder with extrinsic edge states and L2 decay.
+class CppGdmsDecoder {
  public:
-  CppSoftGdbfDecoder(
+  CppGdmsDecoder(
       uint32_t block_length,
       uint32_t n_checks,
       uint32_t n_iterations,
@@ -182,7 +183,7 @@ class CppSoftGdbfDecoder {
   std::vector<uint32_t> first_minimum_counts_;
 };
 
-extern "C" void* cpp_soft_gdbf_create(
+extern "C" void* cpp_gdms_create(
     uint32_t block_length,
     uint32_t n_checks,
     uint32_t n_iterations,
@@ -193,7 +194,7 @@ extern "C" void* cpp_soft_gdbf_create(
     const uint32_t* edge_vn,
     const uint32_t* check_offsets) {
   try {
-    return new CppSoftGdbfDecoder(
+    return new CppGdmsDecoder(
         block_length,
         n_checks,
         n_iterations,
@@ -208,20 +209,20 @@ extern "C" void* cpp_soft_gdbf_create(
   }
 }
 
-extern "C" uint32_t cpp_soft_gdbf_decode_float32(
+extern "C" uint32_t cpp_gdms_decode_float32(
     void* decoder,
     const float* input,
     float* output) {
-  return static_cast<CppSoftGdbfDecoder*>(decoder)->Decode(input, output);
+  return static_cast<CppGdmsDecoder*>(decoder)->Decode(input, output);
 }
 
-extern "C" uint32_t cpp_soft_gdbf_decode_float64(
+extern "C" uint32_t cpp_gdms_decode_float64(
     void* decoder,
     const double* input,
     double* output) {
-  return static_cast<CppSoftGdbfDecoder*>(decoder)->Decode(input, output);
+  return static_cast<CppGdmsDecoder*>(decoder)->Decode(input, output);
 }
 
-extern "C" void cpp_soft_gdbf_free(void* decoder) {
-  delete static_cast<CppSoftGdbfDecoder*>(decoder);
+extern "C" void cpp_gdms_free(void* decoder) {
+  delete static_cast<CppGdmsDecoder*>(decoder);
 }

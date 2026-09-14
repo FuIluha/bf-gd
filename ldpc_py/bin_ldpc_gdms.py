@@ -1,8 +1,10 @@
+"""Python implementation of the gradient-descent min-sum decoder."""
+
 import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
 
-class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
-    """Extrinsic edge-state decoder with L2 decay of messages and decisions."""
+class BinLdpcGdmsDecoder(BinLdpcDecoderBase):
+    """Gradient-descent min-sum decoder with extrinsic edge states and L2 decay."""
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.learning_rate = kwargs["learning_rate"]
@@ -96,7 +98,7 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
         next_q = outgoing + eta * (total[self.edge_vn] - incoming - self.l2 * outgoing)
         next_x = x + eta * (total - self.l2 * x)
         if not np.all(np.isfinite(next_q)) or not np.all(np.isfinite(next_x)):
-            raise FloatingPointError("Non-finite soft GDBF state")
+            raise FloatingPointError("Non-finite GDMS state")
         return next_x, next_q
 
     def decode(self, llr_in, llr_out, rng=None):
@@ -116,3 +118,7 @@ class BinLdpcSoftGdbfDecoder(BinLdpcDecoderBase):
 
         llr_out[:] = x
         return self.n_iterations
+
+
+# Backward-compatible class name for downstream code using the legacy API.
+BinLdpcSoftGdbfDecoder = BinLdpcGdmsDecoder

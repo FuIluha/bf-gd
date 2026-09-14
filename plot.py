@@ -1,4 +1,4 @@
-"""Plot FER curves for BP, min-sum, GD, PGD, soft GDBF, and PMGDBF."""
+"""Plot FER curves for BP, min-sum, GDMS, legacy soft GDBF, and GDBF variants."""
 
 import argparse
 from pathlib import Path
@@ -45,7 +45,7 @@ def load_fer(path):
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Plot simulated FER for BP, min-sum, GD, PGD, soft GDBF, and "
+            "Plot simulated FER for BP, min-sum, GDMS, GD, PGD, and "
             "PMGDBF."
         )
     )
@@ -55,9 +55,16 @@ def parse_args():
         help="sum-product BP text result; the latest matching file is used by default",
     )
     parser.add_argument(
+        "--gdms",
         "--soft-bf",
+        dest="gdms",
         type=Path,
-        help="soft BF text result; the latest matching file is used by default",
+        help="GDMS text result; the latest matching file is used by default",
+    )
+    parser.add_argument(
+        "--soft-bf-old",
+        type=Path,
+        help="older soft BF text result to add as a separate comparison curve",
     )
     parser.add_argument(
         "--min-sum",
@@ -110,11 +117,15 @@ def main():
     min_sum_075_path = args.min_sum_075 or latest_result(
         "*min_sum*scale_0.750*.txt", required=False
     )
-    soft_bf_path = args.soft_bf or latest_result(
-        "*cpp soft gradient descent bit-flipping*.txt"
+    gdms_path = args.gdms or latest_result(
+        "*cpp gradient descent min-sum*.txt", required=False
     )
+    if gdms_path is None:
+        gdms_path = latest_result("*cpp soft gradient descent bit-flipping*.txt")
+    soft_bf_old_path = args.soft_bf_old
     pmgdbf_path = args.pmgdbf or latest_result(
-        "*probabilistic momentum gradient descent bit-flipping*.txt"
+        "*probabilistic momentum gradient descent bit-flipping*.txt",
+        required=False,
     )
     gd_path = args.gd or latest_result(
         "*_gradient descent decoder_iter*.txt", required=False
@@ -134,8 +145,17 @@ def main():
             "tab:purple",
             "v",
         )
-    add_fer_curve(axis, soft_bf_path, "Soft GDBF", "tab:green", "^")
-    add_fer_curve(axis, pmgdbf_path, "PMGDBF", "tab:red", "D")
+    add_fer_curve(axis, gdms_path, "GDMS", "tab:green", "^")
+    if soft_bf_old_path is not None:
+        add_fer_curve(
+            axis,
+            soft_bf_old_path,
+            "Soft GDBF (old)",
+            "tab:gray",
+            "D",
+        )
+    if pmgdbf_path is not None:
+        add_fer_curve(axis, pmgdbf_path, "PMGDBF", "tab:red", "D")
     if gd_path is not None:
         add_fer_curve(axis, gd_path, "GD", "tab:brown", "P")
     if pgd_path is not None:
@@ -156,8 +176,11 @@ def main():
     print(f"Min-sum data: {min_sum_path}")
     if min_sum_075_path is not None:
         print(f"Min-sum scale 0.75 data: {min_sum_075_path}")
-    print(f"Soft GDBF data: {soft_bf_path}")
-    print(f"PMGDBF data: {pmgdbf_path}")
+    print(f"GDMS data: {gdms_path}")
+    if soft_bf_old_path is not None:
+        print(f"Old Soft GDBF data: {soft_bf_old_path}")
+    if pmgdbf_path is not None:
+        print(f"PMGDBF data: {pmgdbf_path}")
     if gd_path is not None:
         print(f"GD data: {gd_path}")
     if pgd_path is not None:

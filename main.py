@@ -6,7 +6,7 @@ import numpy as np
 
 from lbc_encoder.lbc_encoder import lib_compile as lbc_compile
 from ldpc_soft_py.bin_ldpc_soft import lib_compile as ldpc_compile
-from ldpc_py.cpp_bin_ldpc_soft_gdbf import lib_compile as soft_gdbf_compile
+from ldpc_py.cpp_bin_ldpc_gdms import lib_compile as gdms_compile
 from ldpc_py.cpp_bin_ldpc_sp_gdbf import lib_compile as sp_gdbf_compile
 from ldpc_py.cpp_bin_ldpc_gd import lib_compile as gd_compile
 from ldpc_py.cpp_bin_ldpc_pgd import lib_compile as pgd_compile
@@ -20,7 +20,7 @@ def compile_all():
     """
     chan_compile()
     ldpc_compile()  # LDPC codec
-    soft_gdbf_compile()  # C++ soft GDBF decoder
+    gdms_compile()  # C++ gradient-descent min-sum decoder
     sp_gdbf_compile()  # C++ sum-product GDBF decoder
     gd_compile()  # C++ exact-gradient decoder
     pgd_compile()  # C++ probabilistic gradient decoder

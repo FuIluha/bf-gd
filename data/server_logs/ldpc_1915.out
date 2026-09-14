@@ -1,0 +1,49 @@
+------------------------ Simulation parameters: ------------------------
+SNR range:                     -1:0.05:0.4 dB (total 29 points)
+SNR precision:                 3 digits to distinguish unique points
+MAX number of errors:          2.0000e+02
+MAX number of experiments:     1.0000e+07
+MIN probability of error:      1.0000e-07
+Scheduler 'look ahead':        2 SNR points
+Target num. of errors / batch: 10.000
+Chunk size:                    10
+Maximum batch size:            1000000
+The number of workers:         128
+Simulation log file:          'log_simulator.log'
+---------------------- Postprocessing parameters: ----------------------
+Confidence level for FER error bars:               0.9500
+Error probability upper threshold (Bernoulli fit): 0.9500
+Maximum regression degree:                         MIN(15, #points / 3)
+Regression type ('spline' or 'polynomial'):       'polynomial'
+------------------------------------------------------------------------
+Simulation plan contains 1 experiment(s).
+------------------------------------------------------------------------
+------------------------- Current experiment: --------------------------
+------------------------------------------------------------------------
+Channel parameters:
+  Modulation:                        BPSK
+  Channel output:                    received
+------------------------------------------------------------------------
+Binary LDPC code with decoding algorithm
+Code parameters:
+  Alist path:               'codes/ldpc_savin_4_8_12_24_Zc54_pcm.alist'
+  Parity check matrix shape: 648 x 1296
+  Generator matrix path:     None. All-zero-codewords simulation
+  Block length:              1296 bits
+  Information bits count:    648
+  Coding rate:               0.5000
+  Estimating FER by:         a whole codeword
+Decoder-specific parameters:
+  Decoding algorithm:        'cpp soft gradient descent bit-flipping'
+  The number of iterations:  50
+  LLR type:                  'float32'
+  Decoder parameters:        {'learning_rate': 0.5, 'learning_rate_decay': 0.0, 
+'alpha': 1.0, 'l2': 1.0}
+------------------------------------------------------------------------
+Output filename: data/bin_ldpc_hard_ldpc_savin_4_8_12_24_Zc54_k648_n1296_cpp 
+soft gradient descent bit-flipping_iter_50_llr_float32_bpsk_received.pickle
+------------------------------------------------------------------------
+Postprocessing: data/bin_ldpc_hard_ldpc_savin_4_8_12_24_Zc54_k648_n1296_cpp soft
+gradient descent bit-flipping_iter_50_llr_float32_bpsk_received.pickle -> 
+data/bin_ldpc_hard_ldpc_savin_4_8_12_24_Zc54_k648_n1296_cpp soft gradient 
+descent bit-flipping_iter_50_llr_float32_bpsk_received.txt
