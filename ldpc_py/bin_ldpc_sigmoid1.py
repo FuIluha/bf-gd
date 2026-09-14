@@ -50,7 +50,7 @@ class BinLdpcSigmoid1Decoder(BinLdpcDecoderBase):
         l = np.repeat(self.L + 1, self.block_length)
         for iteration in range(self.n_iterations): # iteration loop
             syndrome = self.bpsk_syndrome(x)
-            check_syndromes = 1.0 / (1.0 + np.exp(-self.beta * syndrome)) # syndrome
+            check_syndromes = 2 * (1.0 / (1.0 + np.exp(-self.beta * syndrome))) - 1 # syndrome
             syndrome = self.bpsk_syndrome(x)
 
             if np.all(syndrome == 1):
