@@ -4,6 +4,8 @@ from .bin_ldpc_mgdbf import BinLdpcMgdbfDecoder
 from .bin_ldpc_pmgdbf import BinLdpcPmgdbfDecoder
 from .bin_ldpc_epmgdbf import BinLdpcEpmgdbfDecoder
 from .bin_ldpc_eafpmgdbf import BinLdpcEafpmgdbfDecoder
+from .bin_ldpc_egdbf import BinLdpcEgdbfDecoder
+from .cpp_bin_ldpc_egdbf import CppBinLdpcEgdbfDecoder
 from .bin_ldpc_gdms import BinLdpcGdmsDecoder
 from .cpp_bin_ldpc_gdms import CppBinLdpcGdmsDecoder
 
@@ -14,6 +16,8 @@ _DECODER_TYPES = {
     "probabilistic momentum gradient descent bit-flipping": BinLdpcPmgdbfDecoder,
     "erasure probabilistic momentum gradient descent bit-flipping": BinLdpcEpmgdbfDecoder,
     "erasure add probabilistic momentum gradient descent bit-flipping": BinLdpcEafpmgdbfDecoder,
+    "edge-wise gradient descent bit-flipping": BinLdpcEgdbfDecoder,
+    "cpp edge-wise gradient descent bit-flipping": CppBinLdpcEgdbfDecoder,
     "gradient descent min-sum": BinLdpcGdmsDecoder,
     "soft gradient descent bit-flipping": BinLdpcGdmsDecoder,
     "cpp gradient descent min-sum": CppBinLdpcGdmsDecoder,
