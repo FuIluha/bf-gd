@@ -10,10 +10,10 @@
       "n_iterations": 300,
       "llr_type": "float32",
       "decoder_params": {
-        "delta": 1.0,
-        "alpha": 1.8,
-        "p": 0.9,
-        "rho": [2, 2, 2, 2, 2, 1, 1],
+        "delta": 1.1,
+        "alpha": 0.45,
+        "p": 0.96,
+        "rho": [0.5, 0.5, 0.5, 0.5, 0.5, 0.25, 0.25],
         "L": 7
       }
     }
