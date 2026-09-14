@@ -1,0 +1,19 @@
+{
+  "snr_db": 0.0,
+  "max_trials": 100000000,
+  "target_frame_errors": 50,
+  "trials": 13714016,
+  "seed": 1,
+  "completed_parameter_sets": 825,
+  "total_parameter_sets": 840,
+  "frame_errors": 50,
+  "fer": 3.6459050361323774e-06,
+  "ber": 2.508810271005289e-07,
+  "average_iterations": 5.439530404514622,
+  "decoder_params": {
+    "learning_rate": 0.75,
+    "learning_rate_decay": 0.05,
+    "alpha": 2.0,
+    "l2": 1.5
+  }
+}

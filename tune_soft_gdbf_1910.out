@@ -1,0 +1,317 @@
+Soft GDBF search: SNR=0 dB, max_trials=100000000, target_errors=50, parameter_sets=840, workers=128
+NEW BEST [1/840] FER=0.632911 (50 errors / 79 trials), BER=0.00461986, avg_iter=47.405
+params={"learning_rate":0.05,"learning_rate_decay":0.0,"alpha":2.0,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [4/840] FER=0.617284 (50 errors / 81 trials), BER=0.00479157, avg_iter=47.864
+params={"learning_rate":0.05,"learning_rate_decay":0.05,"alpha":4.0,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [7/840] FER=0.574713 (50 errors / 87 trials), BER=0.00374273, avg_iter=47.138
+params={"learning_rate":0.05,"learning_rate_decay":0.01,"alpha":4.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [9/840] FER=0.561798 (50 errors / 89 trials), BER=0.00425683, avg_iter=45.966
+params={"learning_rate":0.05,"learning_rate_decay":0.1,"alpha":0.25,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [18/840] FER=0.413223 (50 errors / 121 trials), BER=0.00274207, avg_iter=45.372
+params={"learning_rate":0.05,"learning_rate_decay":0.01,"alpha":2.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [29/840] FER=0.287356 (50 errors / 174 trials), BER=0.00172946, avg_iter=41.546
+params={"learning_rate":0.05,"learning_rate_decay":0.05,"alpha":0.25,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [41/840] FER=0.25 (50 errors / 200 trials), BER=0.00155864, avg_iter=42.145
+params={"learning_rate":0.05,"learning_rate_decay":0.01,"alpha":1.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [64/840] FER=0.227273 (50 errors / 220 trials), BER=0.00149411, avg_iter=43.127
+params={"learning_rate":0.05,"learning_rate_decay":0.01,"alpha":4.0,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [84/840] FER=0.162866 (50 errors / 307 trials), BER=0.000947541, avg_iter=40.821
+params={"learning_rate":0.05,"learning_rate_decay":0.01,"alpha":4.0,"l2":0.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [88/840] FER=0.130208 (50 errors / 384 trials), BER=0.000735436, avg_iter=39.154
+params={"learning_rate":0.05,"learning_rate_decay":0.01,"alpha":1.0,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [96/840] FER=0.092081 (50 errors / 543 trials), BER=0.0006224, avg_iter=34.831
+params={"learning_rate":0.05,"learning_rate_decay":0.0,"alpha":0.25,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [97/840] FER=0.0899281 (50 errors / 556 trials), BER=0.000849321, avg_iter=36.408
+params={"learning_rate":0.05,"learning_rate_decay":0.01,"alpha":0.5,"l2":0.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [102/840] FER=0.0868056 (50 errors / 576 trials), BER=0.000616212, avg_iter=38.248
+params={"learning_rate":0.05,"learning_rate_decay":0.0,"alpha":2.0,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [108/840] FER=0.0786164 (50 errors / 636 trials), BER=0.000638151, avg_iter=38.336
+params={"learning_rate":0.05,"learning_rate_decay":0.0,"alpha":4.0,"l2":0.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [110/840] FER=0.0778816 (50 errors / 642 trials), BER=0.000644206, avg_iter=36.171
+params={"learning_rate":0.05,"learning_rate_decay":0.01,"alpha":0.5,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [114/840] FER=0.0740741 (50 errors / 675 trials), BER=0.000605853, avg_iter=36.204
+params={"learning_rate":0.05,"learning_rate_decay":0.01,"alpha":0.5,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [117/840] FER=0.0655308 (50 errors / 763 trials), BER=0.000423725, avg_iter=35.658
+params={"learning_rate":0.05,"learning_rate_decay":0.0,"alpha":0.5,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [119/840] FER=0.056243 (50 errors / 889 trials), BER=0.000387972, avg_iter=36.435
+params={"learning_rate":0.05,"learning_rate_decay":0.0,"alpha":1.0,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [124/840] FER=0.0558659 (50 errors / 895 trials), BER=0.000477619, avg_iter=34.800
+params={"learning_rate":0.05,"learning_rate_decay":0.01,"alpha":0.25,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [125/840] FER=0.0508647 (50 errors / 983 trials), BER=0.000444281, avg_iter=35.177
+params={"learning_rate":0.05,"learning_rate_decay":0.0,"alpha":1.0,"l2":0.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [126/840] FER=0.0420168 (50 errors / 1190 trials), BER=0.000409794, avg_iter=33.156
+params={"learning_rate":0.05,"learning_rate_decay":0.0,"alpha":0.25,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [138/840] FER=0.0378501 (50 errors / 1321 trials), BER=0.000314834, avg_iter=32.693
+params={"learning_rate":0.05,"learning_rate_decay":0.0,"alpha":0.25,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [151/840] FER=0.0308452 (50 errors / 1621 trials), BER=0.000289411, avg_iter=27.494
+params={"learning_rate":0.1,"learning_rate_decay":0.01,"alpha":1.0,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [152/840] FER=0.0292912 (50 errors / 1707 trials), BER=0.000284323, avg_iter=29.350
+params={"learning_rate":0.1,"learning_rate_decay":0.0,"alpha":2.0,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [157/840] FER=0.021645 (50 errors / 2310 trials), BER=0.000179707, avg_iter=22.097
+params={"learning_rate":0.1,"learning_rate_decay":0.05,"alpha":0.25,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [161/840] FER=0.0192234 (50 errors / 2601 trials), BER=0.00021211, avg_iter=25.908
+params={"learning_rate":0.1,"learning_rate_decay":0.0,"alpha":1.0,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [165/840] FER=0.0169434 (50 errors / 2951 trials), BER=0.000164205, avg_iter=22.913
+params={"learning_rate":0.1,"learning_rate_decay":0.01,"alpha":0.5,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [184/840] FER=0.0166667 (50 errors / 3000 trials), BER=0.000212706, avg_iter=24.267
+params={"learning_rate":0.1,"learning_rate_decay":0.1,"alpha":0.25,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [185/840] FER=0.0149835 (50 errors / 3337 trials), BER=0.000107983, avg_iter=25.979
+params={"learning_rate":0.1,"learning_rate_decay":0.05,"alpha":1.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [187/840] FER=0.0122911 (50 errors / 4068 trials), BER=0.000307656, avg_iter=22.149
+params={"learning_rate":0.1,"learning_rate_decay":0.05,"alpha":0.25,"l2":0.25}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [193/840] FER=0.0102249 (50 errors / 4890 trials), BER=0.000539177, avg_iter=20.019
+params={"learning_rate":0.1,"learning_rate_decay":0.01,"alpha":0.25,"l2":0.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [198/840] FER=0.00818599 (50 errors / 6108 trials), BER=0.000604348, avg_iter=19.318
+params={"learning_rate":0.1,"learning_rate_decay":0.0,"alpha":0.25,"l2":0.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [205/840] FER=0.00784437 (50 errors / 6374 trials), BER=0.000364739, avg_iter=19.558
+params={"learning_rate":0.1,"learning_rate_decay":0.01,"alpha":0.25,"l2":0.25}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [208/840] FER=0.00731743 (50 errors / 6833 trials), BER=0.00031946, avg_iter=20.164
+params={"learning_rate":0.1,"learning_rate_decay":0.01,"alpha":0.5,"l2":0.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [209/840] FER=0.0067769 (50 errors / 7378 trials), BER=0.000450539, avg_iter=18.902
+params={"learning_rate":0.1,"learning_rate_decay":0.0,"alpha":0.25,"l2":0.25}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [210/840] FER=0.00673038 (50 errors / 7429 trials), BER=0.00110958, avg_iter=9.749
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":0.25,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [214/840] FER=0.0065634 (50 errors / 7618 trials), BER=0.000409808, avg_iter=19.484
+params={"learning_rate":0.1,"learning_rate_decay":0.0,"alpha":0.5,"l2":0.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [219/840] FER=0.00618506 (50 errors / 8084 trials), BER=6.75775e-05, avg_iter=19.169
+params={"learning_rate":0.1,"learning_rate_decay":0.01,"alpha":0.25,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [230/840] FER=0.00533732 (50 errors / 9368 trials), BER=0.000196772, avg_iter=20.659
+params={"learning_rate":0.1,"learning_rate_decay":0.01,"alpha":1.0,"l2":0.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [232/840] FER=0.00507614 (50 errors / 9850 trials), BER=0.00147749, avg_iter=11.038
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":2.0,"l2":0.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [233/840] FER=0.00473126 (50 errors / 10568 trials), BER=0.000186257, avg_iter=19.107
+params={"learning_rate":0.1,"learning_rate_decay":0.01,"alpha":0.25,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [236/840] FER=0.00472456 (50 errors / 10583 trials), BER=0.00018643, avg_iter=19.773
+params={"learning_rate":0.1,"learning_rate_decay":0.01,"alpha":0.5,"l2":0.25}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [240/840] FER=0.00426694 (50 errors / 11718 trials), BER=0.00021901, avg_iter=18.453
+params={"learning_rate":0.1,"learning_rate_decay":0.0,"alpha":0.25,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [242/840] FER=0.00404531 (50 errors / 12360 trials), BER=4.03906e-05, avg_iter=18.374
+params={"learning_rate":0.1,"learning_rate_decay":0.0,"alpha":0.25,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [248/840] FER=0.00356659 (50 errors / 14019 trials), BER=0.000936835, avg_iter=10.245
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":1.0,"l2":0.25}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [255/840] FER=0.00356659 (50 errors / 14019 trials), BER=0.000106557, avg_iter=20.378
+params={"learning_rate":0.1,"learning_rate_decay":0.01,"alpha":1.0,"l2":0.25}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [257/840] FER=0.00248756 (50 errors / 20100 trials), BER=0.000402885, avg_iter=9.611
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":0.5,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [268/840] FER=0.0024199 (50 errors / 20662 trials), BER=0.000371201, avg_iter=9.740
+params={"learning_rate":0.25,"learning_rate_decay":0.01,"alpha":0.5,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [271/840] FER=0.00230213 (50 errors / 21719 trials), BER=0.000531125, avg_iter=11.146
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":4.0,"l2":0.25}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [278/840] FER=0.00213429 (50 errors / 23427 trials), BER=8.41529e-05, avg_iter=18.740
+params={"learning_rate":0.1,"learning_rate_decay":0.0,"alpha":0.5,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [281/840] FER=0.0019699 (50 errors / 25382 trials), BER=6.38393e-05, avg_iter=18.031
+params={"learning_rate":0.1,"learning_rate_decay":0.0,"alpha":0.25,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [290/840] FER=0.00123689 (50 errors / 40424 trials), BER=0.000189427, avg_iter=9.826
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":1.0,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [292/840] FER=0.00106635 (50 errors / 46889 trials), BER=7.75406e-05, avg_iter=9.107
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":0.25,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [341/840] FER=0.00103436 (50 errors / 48339 trials), BER=2.79022e-05, avg_iter=18.449
+params={"learning_rate":0.1,"learning_rate_decay":0.0,"alpha":0.5,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [348/840] FER=0.000692876 (50 errors / 72163 trials), BER=0.000110326, avg_iter=10.309
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":2.0,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [362/840] FER=0.000624126 (50 errors / 80112 trials), BER=9.29255e-05, avg_iter=10.459
+params={"learning_rate":0.25,"learning_rate_decay":0.01,"alpha":2.0,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [363/840] FER=0.000596545 (50 errors / 83816 trials), BER=9.7408e-05, avg_iter=10.851
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":4.0,"l2":0.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [369/840] FER=0.000513832 (50 errors / 97308 trials), BER=1.16326e-05, avg_iter=8.708
+params={"learning_rate":0.25,"learning_rate_decay":0.05,"alpha":0.25,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [384/840] FER=0.000417435 (50 errors / 119779 trials), BER=1.09319e-05, avg_iter=9.746
+params={"learning_rate":0.25,"learning_rate_decay":0.01,"alpha":0.5,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [387/840] FER=0.000384929 (50 errors / 129894 trials), BER=3.01409e-05, avg_iter=9.111
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":0.5,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [393/840] FER=0.000355963 (50 errors / 140464 trials), BER=9.06388e-06, avg_iter=8.204
+params={"learning_rate":0.25,"learning_rate_decay":0.01,"alpha":0.25,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [405/840] FER=0.000354063 (50 errors / 141218 trials), BER=1.03541e-05, avg_iter=9.555
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":0.5,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [422/840] FER=0.000278313 (50 errors / 179654 trials), BER=8.39233e-06, avg_iter=8.077
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":0.25,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [433/840] FER=0.00026503 (50 errors / 188658 trials), BER=2.52637e-05, avg_iter=6.389
+params={"learning_rate":0.5,"learning_rate_decay":0.0,"alpha":1.0,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [444/840] FER=0.000261864 (50 errors / 190939 trials), BER=1.84194e-05, avg_iter=10.156
+params={"learning_rate":0.25,"learning_rate_decay":0.05,"alpha":1.0,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [456/840] FER=0.000221622 (50 errors / 225609 trials), BER=2.11191e-05, avg_iter=6.716
+params={"learning_rate":0.5,"learning_rate_decay":0.0,"alpha":2.0,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [460/840] FER=0.000218061 (50 errors / 229294 trials), BER=2.07427e-05, avg_iter=7.081
+params={"learning_rate":0.5,"learning_rate_decay":0.0,"alpha":4.0,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [463/840] FER=0.000199791 (50 errors / 250261 trials), BER=1.68929e-05, avg_iter=9.490
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":1.0,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [514/840] FER=0.000154937 (50 errors / 322712 trials), BER=6.56808e-06, avg_iter=7.234
+params={"learning_rate":0.5,"learning_rate_decay":0.0,"alpha":1.0,"l2":2.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [520/840] FER=0.000153316 (50 errors / 326123 trials), BER=6.02382e-06, avg_iter=9.140
+params={"learning_rate":0.25,"learning_rate_decay":0.05,"alpha":0.25,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [542/840] FER=0.000141334 (50 errors / 353772 trials), BER=1.14027e-05, avg_iter=10.105
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":2.0,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [557/840] FER=0.000137078 (50 errors / 364755 trials), BER=9.9001e-06, avg_iter=10.882
+params={"learning_rate":0.25,"learning_rate_decay":0.01,"alpha":4.0,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [562/840] FER=0.000130965 (50 errors / 381782 trials), BER=9.61621e-06, avg_iter=10.705
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":4.0,"l2":0.75}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [605/840] FER=0.000100846 (50 errors / 495804 trials), BER=3.21837e-06, avg_iter=9.916
+params={"learning_rate":0.25,"learning_rate_decay":0.1,"alpha":0.5,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [626/840] FER=0.000100316 (50 errors / 498423 trials), BER=6.28061e-06, avg_iter=5.510
+params={"learning_rate":0.75,"learning_rate_decay":0.0,"alpha":2.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [662/840] FER=7.06013e-05 (50 errors / 708202 trials), BER=3.49629e-06, avg_iter=8.701
+params={"learning_rate":0.25,"learning_rate_decay":0.01,"alpha":0.25,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [678/840] FER=6.14831e-05 (50 errors / 813232 trials), BER=3.05802e-06, avg_iter=8.589
+params={"learning_rate":0.25,"learning_rate_decay":0.0,"alpha":0.25,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [690/840] FER=5.08716e-05 (50 errors / 982867 trials), BER=2.6001e-06, avg_iter=6.371
+params={"learning_rate":0.5,"learning_rate_decay":0.1,"alpha":0.25,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [697/840] FER=4.70562e-05 (50 errors / 1062559 trials), BER=9.56374e-07, avg_iter=8.935
+params={"learning_rate":0.25,"learning_rate_decay":0.1,"alpha":0.25,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [706/840] FER=4.38963e-05 (50 errors / 1139049 trials), BER=8.65055e-07, avg_iter=9.746
+params={"learning_rate":0.25,"learning_rate_decay":0.1,"alpha":0.5,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [711/840] FER=4.28959e-05 (50 errors / 1165612 trials), BER=1.79527e-06, avg_iter=9.983
+params={"learning_rate":0.25,"learning_rate_decay":0.05,"alpha":1.0,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [714/840] FER=3.07748e-05 (50 errors / 1624704 trials), BER=1.49695e-06, avg_iter=6.230
+params={"learning_rate":0.5,"learning_rate_decay":0.05,"alpha":0.25,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [721/840] FER=2.40901e-05 (50 errors / 2075538 trials), BER=1.1599e-06, avg_iter=6.163
+params={"learning_rate":0.5,"learning_rate_decay":0.1,"alpha":0.5,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [730/840] FER=1.93144e-05 (50 errors / 2588744 trials), BER=1.09746e-06, avg_iter=6.382
+params={"learning_rate":0.5,"learning_rate_decay":0.1,"alpha":1.0,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [733/840] FER=1.61555e-05 (50 errors / 3094919 trials), BER=1.02667e-06, avg_iter=6.093
+params={"learning_rate":0.5,"learning_rate_decay":0.0,"alpha":0.25,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [735/840] FER=1.43023e-05 (50 errors / 3495950 trials), BER=8.27015e-07, avg_iter=6.120
+params={"learning_rate":0.5,"learning_rate_decay":0.01,"alpha":0.25,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [745/840] FER=1.33266e-05 (50 errors / 3751898 trials), BER=8.14403e-07, avg_iter=6.210
+params={"learning_rate":0.5,"learning_rate_decay":0.05,"alpha":1.0,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [747/840] FER=1.051e-05 (50 errors / 4757381 trials), BER=6.90123e-07, avg_iter=5.897
+params={"learning_rate":0.5,"learning_rate_decay":0.01,"alpha":0.5,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [751/840] FER=1.03073e-05 (50 errors / 4850919 trials), BER=7.2374e-07, avg_iter=6.072
+params={"learning_rate":0.5,"learning_rate_decay":0.01,"alpha":1.0,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [752/840] FER=8.35793e-06 (50 errors / 5982339 trials), BER=5.67772e-07, avg_iter=5.868
+params={"learning_rate":0.5,"learning_rate_decay":0.0,"alpha":0.5,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [758/840] FER=8.35793e-06 (50 errors / 5982339 trials), BER=3.76623e-07, avg_iter=8.624
+params={"learning_rate":0.25,"learning_rate_decay":0.01,"alpha":0.5,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [759/840] FER=7.81106e-06 (50 errors / 6401177 trials), BER=5.74137e-07, avg_iter=6.037
+params={"learning_rate":0.5,"learning_rate_decay":0.0,"alpha":1.0,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [760/840] FER=6.64464e-06 (50 errors / 7524865 trials), BER=3.57867e-07, avg_iter=6.816
+params={"learning_rate":0.5,"learning_rate_decay":0.1,"alpha":2.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [767/840] FER=6.36231e-06 (50 errors / 7858778 trials), BER=3.40796e-07, avg_iter=5.905
+params={"learning_rate":0.5,"learning_rate_decay":0.1,"alpha":0.5,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [775/840] FER=6.30736e-06 (50 errors / 7927247 trials), BER=3.69973e-07, avg_iter=6.044
+params={"learning_rate":0.5,"learning_rate_decay":0.1,"alpha":0.25,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [777/840] FER=6.09374e-06 (50 errors / 8205141 trials), BER=4.39445e-07, avg_iter=5.299
+params={"learning_rate":0.75,"learning_rate_decay":0.01,"alpha":1.0,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [778/840] FER=5.75097e-06 (50 errors / 8694188 trials), BER=4.34606e-07, avg_iter=6.912
+params={"learning_rate":0.75,"learning_rate_decay":0.0,"alpha":0.25,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [786/840] FER=5.32414e-06 (50 errors / 9391190 trials), BER=3.24953e-07, avg_iter=5.931
+params={"learning_rate":0.5,"learning_rate_decay":0.05,"alpha":0.25,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [789/840] FER=4.95051e-06 (50 errors / 10099974 trials), BER=3.87026e-07, avg_iter=5.295
+params={"learning_rate":0.75,"learning_rate_decay":0.0,"alpha":1.0,"l2":1.0}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [791/840] FER=4.76643e-06 (50 errors / 10490028 trials), BER=3.10848e-07, avg_iter=6.366
+params={"learning_rate":0.5,"learning_rate_decay":0.01,"alpha":2.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [792/840] FER=4.58891e-06 (50 errors / 10895832 trials), BER=3.16196e-07, avg_iter=5.890
+params={"learning_rate":0.5,"learning_rate_decay":0.01,"alpha":1.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [795/840] FER=4.23686e-06 (50 errors / 11801200 trials), BER=2.70165e-07, avg_iter=5.480
+params={"learning_rate":0.75,"learning_rate_decay":0.01,"alpha":2.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [810/840] FER=4.04388e-06 (50 errors / 12364367 trials), BER=2.6435e-07, avg_iter=5.804
+params={"learning_rate":0.75,"learning_rate_decay":0.01,"alpha":4.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [823/840] FER=3.67281e-06 (50 errors / 13613540 trials), BER=2.51146e-07, avg_iter=5.615
+params={"learning_rate":0.5,"learning_rate_decay":0.0,"alpha":0.5,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+NEW BEST [825/840] FER=3.64591e-06 (50 errors / 13714016 trials), BER=2.50881e-07, avg_iter=5.440
+params={"learning_rate":0.75,"learning_rate_decay":0.05,"alpha":2.0,"l2":1.5}
+saved to /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
+Search completed. Best parameters: /home/i.chevtaev/bf-gd/params_cpp_soft_gdbf_l2.txt
