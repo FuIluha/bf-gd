@@ -9,6 +9,9 @@ class BinLdpcSigmoid1Decoder(BinLdpcDecoderBase):
         self.alpha = kwargs["alpha"]
         self.p = kwargs["p"]
         self.beta = kwargs["beta"]
+        self.regularization = kwargs.get("regularization", 0.0)
+        if self.regularization < 0:
+            raise ValueError("Regularization must be non-negative")
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
         self.L = kwargs["L"]
 
@@ -50,8 +53,7 @@ class BinLdpcSigmoid1Decoder(BinLdpcDecoderBase):
         l = np.repeat(self.L + 1, self.block_length)
         for iteration in range(self.n_iterations): # iteration loop
             syndrome = self.bpsk_syndrome(x)
-            check_syndromes = 2 * (1.0 / (1.0 + np.exp(-self.beta * syndrome))) - 1 # syndrome
-            syndrome = self.bpsk_syndrome(x)
+            check_syndromes = 2.0 * (1.0 / (1.0 + np.exp(-self.beta * syndrome))) - 1.0  
 
             if np.all(syndrome == 1):
                 llr_out[:] = x
@@ -63,7 +65,7 @@ class BinLdpcSigmoid1Decoder(BinLdpcDecoderBase):
                 minlength=self.block_length,
             )
             l = np.minimum(l, self.L) + 1
-            E = self.alpha * x * y + incident_syndrome_sums + self.rho[l - 1] # local energy computation
+            E = self.alpha * x * y + incident_syndrome_sums + self.rho[l - 1] - self.regularization * x  # local energy computation
 
             E_th = np.min(E) + self.delta
             rand = rng.random(self.block_length)

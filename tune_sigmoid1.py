@@ -22,6 +22,7 @@ DEFAULT_DELTAS = np.round(np.arange(0.8, 1.201, 0.05), 2)
 DEFAULT_ALPHAS = np.round(np.arange(1.5, 2.001, 0.05), 2)
 DEFAULT_BETAS = np.round(np.arange(0.25, 4.01, 0.25), 2)
 DEFAULT_PROBABILITIES = np.round(np.arange(0.8, 1.001, 0.05), 2)
+DEFAULT_REGULARIZATIONS = np.round(np.arange(0.0, 0.51, 0.05), 2)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -103,6 +104,11 @@ def parse_args():
         default=DEFAULT_PROBABILITIES,
     )
     parser.add_argument(
+        "--regularizations",
+        type=comma_separated_floats,
+        default=DEFAULT_REGULARIZATIONS,
+    )
+    parser.add_argument(
         "--rho",
         type=rho_profile,
         action="append",
@@ -128,6 +134,8 @@ def validate_args(args):
         raise ValueError("all beta values must be positive")
     if any(probability <= 0 or probability > 1 for probability in args.probabilities):
         raise ValueError("all probabilities must be in (0, 1]")
+    if any(reg <= 0 for reg in args.regularizations):
+        raise ValueError("all regularization values must be non-negative")
 
 
 def load_base_experiment(config_path):
@@ -148,16 +156,18 @@ def parameter_grid(args, base_params):
         "alpha": float(base_params["alpha"]),
         "beta": float(base_params.get("beta", 1.0)),
         "p": float(base_params["p"]),
+        "regularization": float(base_params.get("regularization", 0.0)),
         "rho": list(base_params["rho"]),
         "L": int(base_params["L"]),
     }
 
     candidates = [baseline]
-    for delta, alpha, beta, probability, rho in itertools.product(
+    for delta, alpha, beta, probability, regularization, rho in itertools.product(
         args.deltas,
         args.alphas,
         args.betas,
         args.probabilities,
+        args.regularizations,
         rho_profiles,
     ):
         candidates.append(
@@ -166,6 +176,7 @@ def parameter_grid(args, base_params):
                 "alpha": alpha,
                 "beta": beta,
                 "p": probability,
+                "regularization": regularization,
                 "rho": list(rho),
                 "L": len(rho),
             }
