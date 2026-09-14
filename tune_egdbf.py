@@ -19,17 +19,20 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_egdbf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf.txt"
 
-# 11 * 5 * 6 * 11 = 3630 combinations before baseline deduplication.
-DEFAULT_DELTAS = tuple(np.round(np.arange(0.5, 1.51, 0.1), 2))
-DEFAULT_ALPHAS = (0.2, 0.3, 0.4, 0.45, 0.5, 0.6, 0.8, 1.0, 1.4, 1.8, 2.2)
-DEFAULT_PROBABILITIES = (0.7, 0.8, 0.9, 0.95, 1.0)
+# 13 * 8 = 104 deterministic hard-message configurations.
+DEFAULT_ALPHAS = (
+    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75,
+    1.8, 2.0, 2.25, 2.5, 3.0, 4.0,
+)
 DEFAULT_RHO_PROFILES = (
     (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     (0.25, 0.25, 0.25, 0.25, 0.25, 0.125, 0.125),
     (0.5, 0.5, 0.5, 0.5, 0.5, 0.25, 0.25),
-    (0.75, 0.75, 0.75, 0.75, 0.75, 0.5, 0.5),
     (1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5),
+    (1.5, 1.5, 1.5, 1.5, 1.5, 0.75, 0.75),
     (2.0, 2.0, 2.0, 2.0, 2.0, 1.0, 1.0),
+    (2.5, 2.5, 2.5, 2.5, 2.5, 1.25, 1.25),
+    (3.0, 3.0, 3.0, 3.0, 3.0, 1.5, 1.5),
 )
 
 _BASE_EXPERIMENT = None
@@ -65,19 +68,9 @@ def parse_args():
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-configs", type=int)
     parser.add_argument(
-        "--deltas",
-        type=comma_separated_floats,
-        default=DEFAULT_DELTAS,
-    )
-    parser.add_argument(
         "--alphas",
         type=comma_separated_floats,
         default=DEFAULT_ALPHAS,
-    )
-    parser.add_argument(
-        "--probabilities",
-        type=comma_separated_floats,
-        default=DEFAULT_PROBABILITIES,
     )
     parser.add_argument(
         "--rho",
@@ -103,15 +96,8 @@ def validate_args(args):
         raise ValueError("--workers must be positive")
     if args.max_configs is not None and args.max_configs <= 0:
         raise ValueError("--max-configs must be positive")
-    if any(not np.isfinite(value) or value < 0 for value in args.deltas):
-        raise ValueError("all deltas must be finite and non-negative")
     if any(not np.isfinite(value) or value <= 0 for value in args.alphas):
         raise ValueError("all alphas must be finite and positive")
-    if any(
-        not np.isfinite(value) or value <= 0 or value > 1
-        for value in args.probabilities
-    ):
-        raise ValueError("all probabilities must be finite and in (0, 1]")
     profiles = args.rho_profiles or DEFAULT_RHO_PROFILES
     for profile in profiles:
         if not profile or any(not np.isfinite(value) for value in profile):
@@ -131,23 +117,17 @@ def load_base_experiment(config_path):
 def parameter_grid(args, base_params):
     rho_profiles = args.rho_profiles or DEFAULT_RHO_PROFILES
     baseline = {
-        "delta": float(base_params["delta"]),
         "alpha": float(base_params["alpha"]),
-        "p": float(base_params["p"]),
         "rho": [float(value) for value in base_params["rho"]],
         "L": int(base_params["L"]),
     }
     candidates = [baseline]
-    for delta, probability, rho, alpha in itertools.product(
-        args.deltas,
-        args.probabilities,
+    for rho, alpha in itertools.product(
         rho_profiles,
         args.alphas,
     ):
         candidates.append({
-            "delta": float(delta),
             "alpha": float(alpha),
-            "p": float(probability),
             "rho": [float(value) for value in rho],
             "L": len(rho),
         })

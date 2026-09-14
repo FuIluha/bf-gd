@@ -17,18 +17,27 @@ This repository has
 
 ### E-GDBF
 
-E-GDBF keeps the PMGDBF flip rule, threshold, probability, and momentum, but
-expresses the check contribution as an extrinsic message on every Tanner-graph
-edge.  For an edge between check `a` and variable `i`,
+E-GDBF stores one persistent hard variable-to-check opinion on every Tanner-
+graph edge.  Its synchronous message updates are
 
 ```
-r[a->i] = product(x[j] for j in N(a) excluding i)
-E[a->i] = x[i] * r[a->i] + alpha*x[i]*y[i] + rho[l[i]]
-E_post[i] = sum(E[a->i] for a in N(i))
+q[i->a] = sign(y[i])                                      # initialization
+r[a->i] = product(q[j->a] for j in N(a) excluding i)
+g[i->a] = alpha*y[i] + sum(r[b->i] for b in N(i) excluding a)
+          + rho[l[i->a]]*q[i->a]
+q_new[i->a] = sign(g[i->a])
 ```
 
-There is no min-sum magnitude operation.  Every edge energy contains the full
-channel and momentum terms.  Consequently, posterior aggregation weights these
-terms by `deg(i)`, so E-GDBF is not algebraically equivalent to PMGDBF.  It is
-an edge-wise modification of the Savin decoder, not a claim of a different
-proven scalar objective.
+The hard a-posteriori word is computed separately:
+
+```
+g_post[i] = alpha*y[i] + sum(r[a->i] for a in N(i))
+x[i] = sign(g_post[i])
+```
+
+There is no min-sum magnitude operation and no multiplication of a check
+message by the current hard-word bit.  The hard word is not fed back to the
+checks: they use the independently stored `q[i->a]` signs on the next
+iteration.  Momentum acts as inertia in the direction of the current edge
+sign.  This is an edge-state message-passing modification, not a claim of a
+different proven scalar objective.

@@ -1,19 +1,16 @@
 #include <algorithm>
 #include <cstdint>
 #include <new>
-#include <random>
 #include <vector>
 
-// Edge-wise gradient descent bit-flipping with binary extrinsic messages.
+// Hard message passing with persistent variable-to-check signs.
 class CppEgdbfDecoder {
  public:
   CppEgdbfDecoder(
       uint32_t block_length,
       uint32_t n_checks,
       uint32_t n_iterations,
-      double delta,
       double alpha,
-      double probability,
       const double* rho,
       uint32_t momentum_length,
       const uint32_t* edge_vn,
@@ -21,130 +18,153 @@ class CppEgdbfDecoder {
       : block_length_(block_length),
         n_checks_(n_checks),
         n_iterations_(n_iterations),
-        delta_(delta),
         alpha_(alpha),
-        probability_(probability),
         momentum_length_(momentum_length),
         rho_(rho, rho + momentum_length),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
-        x_(block_length),
-        ages_(block_length),
-        check_syndromes_(n_checks),
+        channel_signs_(block_length),
+        hard_word_(block_length),
+        variable_messages_(check_offsets[n_checks]),
+        new_variable_messages_(check_offsets[n_checks]),
         check_messages_(check_offsets[n_checks]),
-        edge_energies_(check_offsets[n_checks]),
-        posterior_energies_(block_length) {
-    // The final zero implements rho(l)=0 before a bit has been flipped.
+        ages_(check_offsets[n_checks]),
+        incoming_sums_(block_length),
+        posterior_gradients_(block_length) {
+    // rho[L] is used before an edge message has changed for the first time.
     rho_.push_back(0.0);
   }
 
   template <typename Float>
-  uint32_t Decode(const Float* input, Float* output, uint64_t seed) {
+  uint32_t Decode(const Float* input, Float* output) {
     for (uint32_t variable = 0; variable < block_length_; ++variable) {
-      x_[variable] = input[variable] >= 0 ? 1 : -1;
-      ages_[variable] = momentum_length_ + 1;
+      channel_signs_[variable] = input[variable] >= 0 ? 1 : -1;
     }
-    std::mt19937_64 generator(seed);
-    std::uniform_real_distribution<double> uniform(0.0, 1.0);
+    for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
+      variable_messages_[edge] = channel_signs_[edge_vn_[edge]];
+      ages_[edge] = momentum_length_ + 1;
+    }
 
     for (uint32_t iteration = 0; iteration < n_iterations_; ++iteration) {
-      if (CalculateSyndromes()) {
+      CalculateCheckMessages();
+      CalculatePosterior(input);
+      if (HardWordSatisfiesChecks()) {
         WriteOutput(output);
         return iteration;
       }
 
-      for (uint32_t variable = 0; variable < block_length_; ++variable) {
-        ages_[variable] =
-            std::min(ages_[variable], momentum_length_) + 1;
-        posterior_energies_[variable] = 0.0;
-      }
-
-      CalculateEdgeEnergies(input);
-      const double threshold =
-          *std::min_element(
-              posterior_energies_.begin(), posterior_energies_.end()) +
-          delta_;
-
-      for (uint32_t variable = 0; variable < block_length_; ++variable) {
-        const bool selected = uniform(generator) < probability_;
-        if (posterior_energies_[variable] <= threshold && selected) {
-          x_[variable] *= -1;
-          ages_[variable] = 0;
-        }
-      }
+      UpdateVariableMessages(input);
     }
 
+    CalculateCheckMessages();
+    CalculatePosterior(input);
     WriteOutput(output);
     return n_iterations_;
   }
 
  private:
-  bool CalculateSyndromes() {
-    bool all_satisfied = true;
+  void CalculateCheckMessages() {
+    std::fill(incoming_sums_.begin(), incoming_sums_.end(), 0.0);
+    for (uint32_t check = 0; check < n_checks_; ++check) {
+      int8_t product = 1;
+      for (uint32_t edge = check_offsets_[check];
+           edge < check_offsets_[check + 1]; ++edge) {
+        product *= variable_messages_[edge];
+      }
+      for (uint32_t edge = check_offsets_[check];
+           edge < check_offsets_[check + 1]; ++edge) {
+        const uint32_t variable = edge_vn_[edge];
+        check_messages_[edge] = product * variable_messages_[edge];
+        incoming_sums_[variable] += check_messages_[edge];
+      }
+    }
+  }
+
+  template <typename Float>
+  void CalculatePosterior(const Float* input) {
+    for (uint32_t variable = 0; variable < block_length_; ++variable) {
+      posterior_gradients_[variable] =
+          alpha_ * static_cast<double>(input[variable]) +
+          incoming_sums_[variable];
+      if (posterior_gradients_[variable] > 0.0) {
+        hard_word_[variable] = 1;
+      } else if (posterior_gradients_[variable] < 0.0) {
+        hard_word_[variable] = -1;
+      } else {
+        hard_word_[variable] = channel_signs_[variable];
+      }
+    }
+  }
+
+  bool HardWordSatisfiesChecks() const {
     for (uint32_t check = 0; check < n_checks_; ++check) {
       int8_t syndrome = 1;
       for (uint32_t edge = check_offsets_[check];
            edge < check_offsets_[check + 1]; ++edge) {
-        syndrome *= x_[edge_vn_[edge]];
+        syndrome *= hard_word_[edge_vn_[edge]];
       }
-      check_syndromes_[check] = syndrome;
-      all_satisfied = all_satisfied && syndrome == 1;
+      if (syndrome != 1) return false;
     }
-    return all_satisfied;
+    return true;
   }
 
   template <typename Float>
-  void CalculateEdgeEnergies(const Float* input) {
-    for (uint32_t check = 0; check < n_checks_; ++check) {
-      for (uint32_t edge = check_offsets_[check];
-           edge < check_offsets_[check + 1]; ++edge) {
-        const uint32_t variable = edge_vn_[edge];
-        // Since x_i is +/-1, c_a*x_i is the product excluding i.
-        check_messages_[edge] = check_syndromes_[check] * x_[variable];
-        const double intrinsic_and_momentum =
-            alpha_ * static_cast<double>(x_[variable]) *
-                static_cast<double>(input[variable]) +
-            rho_[ages_[variable] - 1];
-        edge_energies_[edge] =
-            static_cast<double>(x_[variable] * check_messages_[edge]) +
-            intrinsic_and_momentum;
-        posterior_energies_[variable] += edge_energies_[edge];
+  void UpdateVariableMessages(const Float* input) {
+    for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
+      ages_[edge] = std::min(ages_[edge], momentum_length_) + 1;
+      const uint32_t variable = edge_vn_[edge];
+      const double extrinsic_gradient =
+          alpha_ * static_cast<double>(input[variable]) +
+          incoming_sums_[variable] -
+          static_cast<double>(check_messages_[edge]) +
+          rho_[ages_[edge] - 1] * variable_messages_[edge];
+      if (extrinsic_gradient > 0.0) {
+        new_variable_messages_[edge] = 1;
+      } else if (extrinsic_gradient < 0.0) {
+        new_variable_messages_[edge] = -1;
+      } else {
+        new_variable_messages_[edge] = variable_messages_[edge];
       }
+    }
+
+    for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
+      if (new_variable_messages_[edge] != variable_messages_[edge]) {
+        ages_[edge] = 0;
+      }
+      variable_messages_[edge] = new_variable_messages_[edge];
     }
   }
 
   template <typename Float>
   void WriteOutput(Float* output) const {
     for (uint32_t variable = 0; variable < block_length_; ++variable) {
-      output[variable] = static_cast<Float>(x_[variable]);
+      output[variable] = static_cast<Float>(hard_word_[variable]);
     }
   }
 
   uint32_t block_length_;
   uint32_t n_checks_;
   uint32_t n_iterations_;
-  double delta_;
   double alpha_;
-  double probability_;
   uint32_t momentum_length_;
   std::vector<double> rho_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
-  std::vector<int8_t> x_;
-  std::vector<uint32_t> ages_;
-  std::vector<int8_t> check_syndromes_;
+  std::vector<int8_t> channel_signs_;
+  std::vector<int8_t> hard_word_;
+  std::vector<int8_t> variable_messages_;
+  std::vector<int8_t> new_variable_messages_;
   std::vector<int8_t> check_messages_;
-  std::vector<double> edge_energies_;
-  std::vector<double> posterior_energies_;
+  std::vector<uint32_t> ages_;
+  std::vector<double> incoming_sums_;
+  std::vector<double> posterior_gradients_;
 };
 
 extern "C" void* cpp_egdbf_create(
     uint32_t block_length,
     uint32_t n_checks,
     uint32_t n_iterations,
-    double delta,
     double alpha,
-    double probability,
     const double* rho,
     uint32_t momentum_length,
     const uint32_t* edge_vn,
@@ -154,9 +174,7 @@ extern "C" void* cpp_egdbf_create(
         block_length,
         n_checks,
         n_iterations,
-        delta,
         alpha,
-        probability,
         rho,
         momentum_length,
         edge_vn,
@@ -169,17 +187,15 @@ extern "C" void* cpp_egdbf_create(
 extern "C" uint32_t cpp_egdbf_decode_float32(
     void* decoder,
     const float* input,
-    float* output,
-    uint64_t seed) {
-  return static_cast<CppEgdbfDecoder*>(decoder)->Decode(input, output, seed);
+    float* output) {
+  return static_cast<CppEgdbfDecoder*>(decoder)->Decode(input, output);
 }
 
 extern "C" uint32_t cpp_egdbf_decode_float64(
     void* decoder,
     const double* input,
-    double* output,
-    uint64_t seed) {
-  return static_cast<CppEgdbfDecoder*>(decoder)->Decode(input, output, seed);
+    double* output) {
+  return static_cast<CppEgdbfDecoder*>(decoder)->Decode(input, output);
 }
 
 extern "C" void cpp_egdbf_free(void* decoder) {
