@@ -19,21 +19,12 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_egdbf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf.txt"
 
-# 13 * 8 = 104 deterministic hard-message configurations.
-DEFAULT_ALPHAS = (
-    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75,
-    1.8, 2.0, 2.25, 2.5, 3.0, 4.0,
-)
-DEFAULT_RHO_PROFILES = (
-    (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-    (0.25, 0.25, 0.25, 0.25, 0.25, 0.125, 0.125),
-    (0.5, 0.5, 0.5, 0.5, 0.5, 0.25, 0.25),
-    (1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5),
-    (1.5, 1.5, 1.5, 1.5, 1.5, 0.75, 0.75),
-    (2.0, 2.0, 2.0, 2.0, 2.0, 1.0, 1.0),
-    (2.5, 2.5, 2.5, 2.5, 2.5, 1.25, 1.25),
-    (3.0, 3.0, 3.0, 3.0, 3.0, 1.5, 1.5),
-)
+# Dense search: 50 channel weights and all unique two-level, length-7
+# momentum profiles generated from the ranges below (63,250 sets total).
+DEFAULT_ALPHAS = tuple(np.round(np.arange(0.1, 5.001, 0.1), 2))
+DEFAULT_RHO_EARLY_VALUES = tuple(np.round(np.arange(0.0, 4.001, 0.25), 2))
+DEFAULT_RHO_LATE_VALUES = tuple(np.round(np.arange(0.0, 3.001, 0.25), 2))
+DEFAULT_RHO_SPLITS = (1, 2, 3, 4, 5, 6, 7)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -47,6 +38,16 @@ def comma_separated_floats(value):
         values = tuple(float(item.strip()) for item in value.split(","))
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"invalid number list: {value!r}") from exc
+    if not values:
+        raise argparse.ArgumentTypeError("the list must not be empty")
+    return values
+
+
+def comma_separated_ints(value):
+    try:
+        values = tuple(int(item.strip()) for item in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid integer list: {value!r}") from exc
     if not values:
         raise argparse.ArgumentTypeError("the list must not be empty")
     return values
@@ -82,6 +83,24 @@ def parse_args():
             "repeat the option to search several profiles"
         ),
     )
+    parser.add_argument(
+        "--rho-early-values",
+        type=comma_separated_floats,
+        default=DEFAULT_RHO_EARLY_VALUES,
+        help="values before the momentum-profile split",
+    )
+    parser.add_argument(
+        "--rho-late-values",
+        type=comma_separated_floats,
+        default=DEFAULT_RHO_LATE_VALUES,
+        help="values from the momentum-profile split onward",
+    )
+    parser.add_argument(
+        "--rho-splits",
+        type=comma_separated_ints,
+        default=DEFAULT_RHO_SPLITS,
+        help="counts of leading entries using the early rho value",
+    )
     return parser.parse_args()
 
 
@@ -98,8 +117,14 @@ def validate_args(args):
         raise ValueError("--max-configs must be positive")
     if any(not np.isfinite(value) or value <= 0 for value in args.alphas):
         raise ValueError("all alphas must be finite and positive")
-    profiles = args.rho_profiles or DEFAULT_RHO_PROFILES
-    for profile in profiles:
+    if any(
+        not np.isfinite(value) or value < 0
+        for value in args.rho_early_values + args.rho_late_values
+    ):
+        raise ValueError("generated rho values must be finite and non-negative")
+    if any(split <= 0 for split in args.rho_splits):
+        raise ValueError("rho splits must be positive")
+    for profile in args.rho_profiles or ():
         if not profile or any(not np.isfinite(value) for value in profile):
             raise ValueError("rho profiles must be non-empty and finite")
 
@@ -114,8 +139,31 @@ def load_base_experiment(config_path):
     return experiment, config.get("simulation", {})
 
 
+def generated_rho_profiles(args, momentum_length):
+    if args.rho_profiles:
+        return args.rho_profiles
+    if any(split > momentum_length for split in args.rho_splits):
+        raise ValueError("rho splits must not exceed the configured L")
+
+    profiles = []
+    seen = set()
+    for early, late, split in itertools.product(
+        args.rho_early_values,
+        args.rho_late_values,
+        args.rho_splits,
+    ):
+        profile = (
+            (float(early),) * split
+            + (float(late),) * (momentum_length - split)
+        )
+        if profile not in seen:
+            seen.add(profile)
+            profiles.append(profile)
+    return profiles
+
+
 def parameter_grid(args, base_params):
-    rho_profiles = args.rho_profiles or DEFAULT_RHO_PROFILES
+    rho_profiles = generated_rho_profiles(args, int(base_params["L"]))
     baseline = {
         "alpha": float(base_params["alpha"]),
         "rho": [float(value) for value in base_params["rho"]],
