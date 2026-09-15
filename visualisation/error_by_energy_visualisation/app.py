@@ -38,6 +38,12 @@ GRAPH_CONFIG = {
     },
 }
 
+GRAPH_STYLE = {
+    "height": "560px",
+    "minHeight": "560px",
+    "width": "100%",
+}
+
 
 def create_app(dataset, seed=None, workers=None, max_sessions=16):
     """Build an isolated, server-side session app over one fixed frame batch."""
@@ -210,12 +216,18 @@ def _layout(metadata):
                             id="histogram",
                             config=GRAPH_CONFIG,
                             responsive=True,
+                            style=GRAPH_STYLE,
                         ),
                     ),
                     html.Div(id="decision-summary", className="decision-summary"),
                 ]),
                 html.Div(className="chart-card", children=[
-                    dcc.Graph(id="performance", config=GRAPH_CONFIG, responsive=True),
+                    dcc.Graph(
+                        id="performance",
+                        config=GRAPH_CONFIG,
+                        responsive=True,
+                        style=GRAPH_STYLE,
+                    ),
                 ]),
                 html.Div(className="table-card", children=[
                     html.Div(className="card-heading", children=[

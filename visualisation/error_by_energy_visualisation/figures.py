@@ -19,6 +19,8 @@ COLORS = {
     "paper": "#ffffff",
 }
 
+FIGURE_HEIGHT = 560
+
 
 def histogram_figure(
     histogram,
@@ -71,6 +73,8 @@ def histogram_figure(
             annotation_position="top right",
         )
     figure.update_layout(
+        height=FIGURE_HEIGHT,
+        autosize=True,
         title={
             "text": (
                 f"Распределение {title_value}: решение {iteration} → {iteration + 1}"
@@ -126,6 +130,8 @@ def performance_figure(view, y_scale="log"):
         annotation_text="текущий снимок",
     )
     figure.update_layout(
+        height=FIGURE_HEIGHT,
+        autosize=True,
         title={"text": "BER и FER по истории", "x": 0.01},
         xaxis_title="Номер итерации",
         yaxis_title="Доля ошибок",
@@ -150,6 +156,7 @@ def empty_figure(message):
     )
     figure.update_xaxes(visible=False)
     figure.update_yaxes(visible=False)
+    figure.update_layout(height=FIGURE_HEIGHT, autosize=True)
     return _theme(figure)
 
 

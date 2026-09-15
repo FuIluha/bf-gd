@@ -224,6 +224,8 @@ h2 {
 .chart-card .js-plotly-plot,
 .chart-card .plot-container,
 .chart-card .svg-container {
+  height: 560px !important;
+  min-height: 560px;
   max-width: 100%;
 }
 
