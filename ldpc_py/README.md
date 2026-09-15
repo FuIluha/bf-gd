@@ -5,6 +5,7 @@ Decoder of LDPC codes. Supports the following decoders:
 * Multi-bit gradient descent bit-flipping
 * PGDBF with momentum
 * EPMGDBF
+* FTGDBF (fixed-threshold gradient descent bit-flipping)
 * E-GDBF (edge-wise gradient descent bit-flipping), Python and C++
 * GDMS (gradient-descent min-sum) with Python and C++ implementations
 

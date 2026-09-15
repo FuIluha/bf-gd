@@ -41,6 +41,16 @@ The JSON file specifying code contains the following parameters:
 
 See [example.sh](example.sh) for more details.
 
+## Interactive decision-energy explorer
+
+The standalone Dash application in
+[`visualisation/error_by_energy_visualisation`](visualisation/error_by_energy_visualisation)
+provides reproducible, step-by-step FTGDBF and PMGDBF inspection. It displays
+decision-energy distributions, BER/FER, immutable state and parameter history,
+and supports session/export/comparison workflows. See the module
+[`README.md`](visualisation/error_by_energy_visualisation/README.md) for local
+and server launch commands.
+
 Example EAFPMGDBF configuration:
 
 ```json
