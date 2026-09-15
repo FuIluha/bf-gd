@@ -8,15 +8,15 @@ from .models import Algorithm
 
 
 COLORS = {
-    "correct": "#34d399",
-    "incorrect": "#fb7185",
-    "ber": "#60a5fa",
-    "fer": "#f59e0b",
-    "comparison_ber": "#a78bfa",
-    "comparison_fer": "#f472b6",
-    "grid": "rgba(148, 163, 184, 0.16)",
-    "text": "#dbeafe",
-    "paper": "rgba(0,0,0,0)",
+    "correct": "#2e7d32",
+    "incorrect": "#c62828",
+    "ber": "#1565c0",
+    "fer": "#ef6c00",
+    "comparison_ber": "#6a1b9a",
+    "comparison_fer": "#ad1457",
+    "grid": "#dddddd",
+    "text": "#222222",
+    "paper": "#ffffff",
 }
 
 
@@ -83,9 +83,9 @@ def histogram_figure(
         xaxis_title=x_title,
         yaxis_title=y_title,
         yaxis_type=y_scale,
-        legend={"orientation": "h", "y": 1.11, "x": 0},
-        hovermode="x unified",
-        margin={"l": 64, "r": 24, "t": 96, "b": 60},
+        legend={"orientation": "v", "y": 1, "x": 1, "xanchor": "right"},
+        hovermode="closest",
+        margin={"l": 64, "r": 24, "t": 82, "b": 60},
     )
     return _theme(figure)
 
@@ -130,9 +130,9 @@ def performance_figure(view, y_scale="log"):
         xaxis_title="Номер итерации",
         yaxis_title="Доля ошибок",
         yaxis_type=y_scale,
-        legend={"orientation": "h", "y": 1.12, "x": 0},
+        legend={"orientation": "v", "y": 1, "x": 1, "xanchor": "right"},
         hovermode="x unified",
-        margin={"l": 64, "r": 24, "t": 84, "b": 60},
+        margin={"l": 64, "r": 24, "t": 60, "b": 60},
     )
     return _theme(figure)
 
@@ -175,9 +175,9 @@ def _add_metric_trace(figure, x, y, name, color, y_scale, dash="solid"):
 
 def _theme(figure):
     figure.update_layout(
-        template="plotly_dark",
+        template="plotly_white",
         paper_bgcolor=COLORS["paper"],
-        plot_bgcolor="rgba(15, 23, 42, 0.52)",
+        plot_bgcolor="#ffffff",
         font={"family": "Inter, system-ui, sans-serif", "color": COLORS["text"]},
     )
     figure.update_xaxes(gridcolor=COLORS["grid"], zerolinecolor=COLORS["grid"])
