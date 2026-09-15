@@ -27,15 +27,10 @@ pip install -r visualisation/error_by_energy_visualisation/requirements.txt
 python -m visualisation.error_by_energy_visualisation
 ```
 
-Если `lbc_encoder/lbc_encoder_impl.so` ещё не собран, перед первым запуском:
-
-```bash
-python -c "from lbc_encoder.lbc_encoder import lib_compile; lib_compile()"
-```
-
-По умолчанию заранее создаются 1000 случайных кодовых слов при SNR = 1 dB,
-используется seed 1 и один рабочий поток. Параметры набора задаются только
-при старте, поэтому все шаги и оба алгоритма сравниваются на одних данных:
+По умолчанию заранее создаются 1000 всенулевых кодовых слов при SNR = 1 dB,
+используется seed 1 и один рабочий поток. При BPSK переданным символом для
+каждого бита является `+1`. Параметры набора задаются только при старте,
+поэтому все шаги и оба алгоритма сравниваются на одних данных:
 
 ```bash
 python -m visualisation.error_by_energy_visualisation \
@@ -45,6 +40,10 @@ python -m visualisation.error_by_energy_visualisation \
   --workers 8 \
   --port 8050
 ```
+
+Другой JSON кода можно явно выбрать через `--code`. Если он содержит поле
+`generator`, приложение будет генерировать случайные информационные слова;
+для этого должна быть собрана библиотека `lbc_encoder_impl.so`.
 
 После запуска открыть `http://127.0.0.1:8050`.
 

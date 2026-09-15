@@ -8,7 +8,7 @@ from .data import DatasetConfig, load_dataset
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CODE = PROJECT_ROOT / "codes" / "ldpc_savin_4_8_12_24_Zc54_random.json"
+DEFAULT_CODE = PROJECT_ROOT / "codes" / "ldpc_savin_4_8_12_24_Zc54.json"
 
 
 def parse_args(argv=None):
