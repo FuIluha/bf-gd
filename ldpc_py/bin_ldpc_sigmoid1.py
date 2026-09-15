@@ -9,9 +9,7 @@ class BinLdpcSigmoid1Decoder(BinLdpcDecoderBase):
         self.alpha = kwargs["alpha"]
         self.p = kwargs["p"]
         self.beta = kwargs["beta"]
-        self.regularization = kwargs.get("regularization", 0.0)
-        if self.regularization < 0:
-            raise ValueError("Regularization must be non-negative")
+        self.regularization = kwargs["regularization"]
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
         self.L = kwargs["L"]
 
@@ -64,6 +62,7 @@ class BinLdpcSigmoid1Decoder(BinLdpcDecoderBase):
                 weights=check_syndromes[self.edge_cn],
                 minlength=self.block_length,
             )
+
             l = np.minimum(l, self.L) + 1
             E = self.alpha * x * y + incident_syndrome_sums + self.rho[l - 1] - self.regularization * x  # local energy computation
 

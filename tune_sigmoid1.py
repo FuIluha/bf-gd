@@ -72,6 +72,24 @@ def parse_args():
         help="stop a parameter set after this many frame errors (default: 10)",
     )
     parser.add_argument(
+        "--screen-trials",
+        type=int,
+        default=300,
+        help="frames per candidate in the screening stage (default: 300)",
+    )
+    parser.add_argument(
+        "--screen-max-errors",
+        type=int,
+        default=5,
+        help="errors per candidate in screening (default: 5)",
+    )
+    parser.add_argument(
+        "--finalists",
+        type=int,
+        default=10,
+        help="number of screening winners for the full run (default: 10)",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         help="parallel parameter sets (default: allocated Slurm CPUs or local CPUs)",
@@ -126,6 +144,12 @@ def validate_args(args):
         raise ValueError("--trials must be positive")
     if args.max_errors <= 0:
         raise ValueError("--max-errors must be positive")
+    if args.screen_trials <= 0:
+        raise ValueError("--screen-trials must be positive")
+    if args.screen_max_errors <= 0:
+        raise ValueError("--screen-max-errors must be positive")
+    if args.finalists <= 0:
+        raise ValueError("--finalists must be positive")
     if args.workers is not None and args.workers <= 0:
         raise ValueError("--workers must be positive")
     if args.max_configs is not None and args.max_configs <= 0:
@@ -201,8 +225,8 @@ def init_worker(base_experiment, snr_db, max_trials, max_errors, seed):
     _SEED = seed
 
 
-def evaluate_candidate(index_and_params):
-    index, decoder_params = index_and_params
+def evaluate_candidate(candidate_and_budget):
+    index, decoder_params, max_trials, max_errors = candidate_and_budget
     experiment_config = copy.deepcopy(_BASE_EXPERIMENT)
     experiment_config["codec"]["decoder_params"] = decoder_params
     settings = LdpcExperimentSettings(**experiment_config)
@@ -212,7 +236,7 @@ def evaluate_candidate(index_and_params):
     bit_errors = 0.0
     iterations = 0
     trials_completed = 0
-    for trial_index in range(_MAX_TRIALS):
+    for trial_index in range(max_trials):
         # Identical seeds make every candidate see the same channel realizations.
         rng = np.random.default_rng([_SEED, trial_index])
         result = experiment.run(_SNR_DB, rng)
@@ -220,7 +244,7 @@ def evaluate_candidate(index_and_params):
         frame_errors += int(result.fe_cum)
         bit_errors += float(result.be_cum)
         iterations += int(result.n_iter)
-        if frame_errors >= _MAX_ERRORS:
+        if frame_errors >= max_errors:
             break
 
     return {
@@ -285,6 +309,14 @@ def default_workers(simulation_config):
     return min(int(simulation_config.get("n_workers", local_cpus)), local_cpus)
 
 
+def evaluate_stage(pool, candidates, max_trials, max_errors):
+    jobs = [
+        (index, decoder_params, max_trials, max_errors)
+        for index, decoder_params in enumerate(candidates)
+    ]
+    return list(pool.imap_unordered(evaluate_candidate, jobs, chunksize=1))
+
+
 def main():
     args = parse_args()
     validate_args(args)
@@ -298,13 +330,14 @@ def main():
     workers = min(args.workers or default_workers(simulation_config), len(candidates))
     output_path = args.output.resolve()
     print(
-        f"Sigmoid1 search: SNR={args.snr:g} dB, max_trials={args.trials}, "
-        f"target_errors={args.max_errors}, "
-        f"parameter_sets={len(candidates)}, workers={workers}",
+        f"Sigmoid1 search: SNR={args.snr:g} dB, "
+        f"screen={args.screen_trials} frames/{args.screen_max_errors} errors, "
+        f"final={args.trials} frames/{args.max_errors} errors, "
+        f"parameter_sets={len(candidates)}, finalists={args.finalists}, "
+        f"workers={workers}",
         flush=True,
     )
 
-    best_result = None
     context = mp.get_context("spawn")
     with context.Pool(
         processes=workers,
@@ -317,16 +350,34 @@ def main():
             args.seed,
         ),
     ) as pool:
-        results = pool.imap_unordered(
-            evaluate_candidate,
-            enumerate(candidates),
-            chunksize=1,
+        screen_results = evaluate_stage(
+            pool,
+            candidates,
+            args.screen_trials,
+            args.screen_max_errors,
         )
-        for completed, result in enumerate(results, start=1):
+        screen_results.sort(key=result_score)
+        finalists = screen_results[: min(args.finalists, len(screen_results))]
+        print(
+            f"Screening completed: {len(screen_results)} candidates; "
+            f"running {len(finalists)} finalists",
+            flush=True,
+        )
+
+        final_candidates = [candidates[result["index"]] for result in finalists]
+        final_results = evaluate_stage(
+            pool,
+            final_candidates,
+            args.trials,
+            args.max_errors,
+        )
+
+        best_result = None
+        for completed, result in enumerate(final_results, start=1):
             if best_result is None or result_score(result) < result_score(best_result):
                 best_result = result
-                save_best(output_path, result, args, completed, len(candidates))
-                print_best(result, completed, len(candidates), output_path)
+                save_best(output_path, result, args, completed, len(final_results))
+                print_best(result, completed, len(final_results), output_path)
 
     print(f"Search completed. Best parameters: {output_path}", flush=True)
 
