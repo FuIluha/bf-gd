@@ -12,6 +12,7 @@ from .bin_ldpc_gdms import BinLdpcGdmsDecoder
 from .bin_ldpc_mgdms import BinLdpcMgdmsDecoder
 from .cpp_bin_ldpc_gdms import CppBinLdpcGdmsDecoder
 from .bin_ldpc_tgdbf import BinLdpcTgdbfDecoder
+from .cpp_bin_ldpc_mgdms import CppBinLdpcMgdmsDecoder
 
 _DECODER_TYPES = {
     "bit-flipping": BinLdpcBfDecoder,
@@ -26,6 +27,7 @@ _DECODER_TYPES = {
     "cpp edge-wise gradient descent bit-flipping": CppBinLdpcEgdbfDecoder,
     "gradient descent min-sum": BinLdpcGdmsDecoder,
     "momentum gradient descent min-sum": BinLdpcMgdmsDecoder,
+    "cpp momentum gradient descent min-sum": CppBinLdpcMgdmsDecoder,
     "soft gradient descent bit-flipping": BinLdpcGdmsDecoder,
     "cpp gradient descent min-sum": CppBinLdpcGdmsDecoder,
     "test gradient descent bit-flipping": BinLdpcTgdbfDecoder,
