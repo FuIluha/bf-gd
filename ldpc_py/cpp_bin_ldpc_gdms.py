@@ -1,4 +1,4 @@
-"""ctypes wrapper for the C++ gradient-descent min-sum decoder."""
+"""ctypes wrapper for the shared C++ GDMS/MGDMS decoder core."""
 
 import ctypes
 import hashlib
@@ -77,6 +77,7 @@ def load_library():
         ctypes.c_double,
         ctypes.c_double,
         ctypes.c_double,  # l2
+        ctypes.c_double,  # momentum
         uint32_array,
         uint32_array,
     ]
@@ -100,6 +101,8 @@ def load_library():
 class CppBinLdpcGdmsDecoder(BinLdpcDecoderBase):
     """C++ implementation of the GDMS decoder."""
 
+    MOMENTUM_ENABLED = False
+
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.learning_rate = float(kwargs["learning_rate"])
@@ -109,6 +112,11 @@ class CppBinLdpcGdmsDecoder(BinLdpcDecoderBase):
         self.l2 = float(kwargs.get("l2", 1.0))
         if not np.isfinite(self.l2) or self.l2 < 0:
             raise ValueError("l2 must be finite and non-negative")
+        if not self.MOMENTUM_ENABLED and "momentum" in kwargs:
+            raise ValueError("momentum is only supported by the C++ MGDMS decoder")
+        self.momentum = float(kwargs.get("momentum", 0.0)) if self.MOMENTUM_ENABLED else 0.0
+        if not np.isfinite(self.momentum) or not 0 <= self.momentum < 1:
+            raise ValueError("momentum must be finite and in [0, 1)")
 
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
@@ -133,6 +141,7 @@ class CppBinLdpcGdmsDecoder(BinLdpcDecoderBase):
             self.learning_rate_decay,
             self.alpha,
             self.l2,
+            self.momentum,
             self.edge_vn,
             self.check_offsets,
         )

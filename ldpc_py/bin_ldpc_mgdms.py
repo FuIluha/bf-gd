@@ -109,13 +109,16 @@ class BinLdpcMgdmsDecoder(BinLdpcDecoderBase):
         )
         next_x = x + eta * (total - self.l2 * x) + self.momentum * delta_x
         if not np.all(np.isfinite(next_q)) or not np.all(np.isfinite(next_x)):
-            raise FloatingPointError("Non-finite GDMS state")
+            raise FloatingPointError("Non-finite MGDMS state")
         return next_x, next_q
 
     def decode(self, llr_in, llr_out, rng=None):
         y = llr_in.astype(np.float64, copy=True)
         x = y.copy()
         outgoing = y[self.edge_vn].copy()
+
+        prev_x = x.copy()
+        prev_outgoing = outgoing.copy()
 
         for iteration in range(self.n_iterations): # iteration loop
             hard_x = np.where(x >= 0, 1, -1).astype(np.int8)
@@ -125,13 +128,11 @@ class BinLdpcMgdmsDecoder(BinLdpcDecoderBase):
                 llr_out[:] = x
                 return iteration # exit the iteration loop;
 
-            prev_x = x.copy()
-            prev_outgoing = outgoing.copy()
-            x, outgoing = self.update_state(y, x, outgoing, prev_x, prev_outgoing, iteration)
+            next_x, next_outgoing = self.update_state(
+                y, x, outgoing, prev_x, prev_outgoing, iteration,
+            )
+            prev_x, x = x, next_x
+            prev_outgoing, outgoing = outgoing, next_outgoing
 
         llr_out[:] = x
         return self.n_iterations
-
-
-# Backward-compatible class name for downstream code using the legacy API.
-BinLdpcSoftGdbfDecoder = BinLdpcMgdmsDecoder

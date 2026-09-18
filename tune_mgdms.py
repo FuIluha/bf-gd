@@ -120,8 +120,11 @@ def validate_args(args):
 def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
-    if experiment["codec"].get("algorithm") not in {"momentum gradient descent min-sum"}:
-        raise ValueError("the selected config must use the momentum GDMS decoder")
+    if experiment["codec"].get("algorithm") not in {
+        "momentum gradient descent min-sum",
+        "cpp momentum gradient descent min-sum",
+    }:
+        raise ValueError("the selected config must use the Python or C++ momentum GDMS decoder")
     return experiment, config.get("simulation", {})
 
 

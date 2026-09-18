@@ -5,7 +5,7 @@
 #include <new>
 #include <vector>
 
-// Gradient-descent min-sum decoder with extrinsic edge states and L2 decay.
+// GDMS/MGDMS with extrinsic edge states, L2 decay, and optional momentum.
 class CppGdmsDecoder {
  public:
   CppGdmsDecoder(
@@ -16,6 +16,7 @@ class CppGdmsDecoder {
       double learning_rate_decay,
       double alpha,
       double l2,
+      double momentum,
       const uint32_t* edge_vn,
       const uint32_t* check_offsets)
       : block_length_(block_length),
@@ -25,11 +26,16 @@ class CppGdmsDecoder {
         learning_rate_decay_(learning_rate_decay),
         alpha_(alpha),
         l2_(l2),
+        momentum_(momentum),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         x_(block_length),
+        prev_x_(block_length),
+        next_x_(block_length),
         gradient_(block_length),
         variable_messages_(check_offsets[n_checks]),
+        prev_variable_messages_(check_offsets[n_checks]),
+        next_variable_messages_(check_offsets[n_checks]),
         check_messages_(check_offsets[n_checks]),
         check_signs_(n_checks),
         first_minima_(n_checks),
@@ -41,10 +47,12 @@ class CppGdmsDecoder {
     std::fill(check_messages_.begin(), check_messages_.end(), 0.0);
     for (uint32_t variable = 0; variable < block_length_; ++variable) {
       x_[variable] = static_cast<double>(input[variable]);
+      prev_x_[variable] = x_[variable];
     }
 
     for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
       variable_messages_[edge] = static_cast<double>(input[edge_vn_[edge]]);
+      prev_variable_messages_[edge] = variable_messages_[edge];
     }
 
     for (uint32_t iteration = 0; iteration < n_iterations_; ++iteration) {
@@ -58,12 +66,21 @@ class CppGdmsDecoder {
           learning_rate_ /
           std::sqrt(1.0 + learning_rate_decay_ * iteration);
       for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
-        variable_messages_[edge] += current_learning_rate * (
-            gradient_[edge_vn_[edge]] - check_messages_[edge] - l2_ * variable_messages_[edge]);
+        next_variable_messages_[edge] = variable_messages_[edge]
+            + current_learning_rate * (
+                gradient_[edge_vn_[edge]] - check_messages_[edge]
+                - l2_ * variable_messages_[edge])
+            + momentum_ * (variable_messages_[edge] - prev_variable_messages_[edge]);
       }
       for (uint32_t variable = 0; variable < block_length_; ++variable) {
-        x_[variable] += current_learning_rate * (gradient_[variable] - l2_ * x_[variable]);
+        next_x_[variable] = x_[variable]
+            + current_learning_rate * (gradient_[variable] - l2_ * x_[variable])
+            + momentum_ * (x_[variable] - prev_x_[variable]);
       }
+      prev_variable_messages_.swap(variable_messages_);
+      variable_messages_.swap(next_variable_messages_);
+      prev_x_.swap(x_);
+      x_.swap(next_x_);
       if (!ValuesFit<Float>()) {
         return std::numeric_limits<uint32_t>::max();
       }
@@ -171,11 +188,16 @@ class CppGdmsDecoder {
   double learning_rate_decay_;
   double alpha_;
   double l2_;
+  double momentum_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
   std::vector<double> x_;
+  std::vector<double> prev_x_;
+  std::vector<double> next_x_;
   std::vector<double> gradient_;
   std::vector<double> variable_messages_;
+  std::vector<double> prev_variable_messages_;
+  std::vector<double> next_variable_messages_;
   std::vector<double> check_messages_;
   std::vector<int> check_signs_;
   std::vector<double> first_minima_;
@@ -191,6 +213,7 @@ extern "C" void* cpp_gdms_create(
     double learning_rate_decay,
     double alpha,
     double l2,
+    double momentum,
     const uint32_t* edge_vn,
     const uint32_t* check_offsets) {
   try {
@@ -202,6 +225,7 @@ extern "C" void* cpp_gdms_create(
         learning_rate_decay,
         alpha,
         l2,
+        momentum,
         edge_vn,
         check_offsets);
   } catch (...) {
