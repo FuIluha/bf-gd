@@ -19,12 +19,15 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_mgdms.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_mgdms.txt"
 
-# 5 * 4 * 5 * 5 * 7 = 3500 combinations, including the current baseline.
+# 5 * 4 * 5 * 5 * 15 = 7500 combinations, including zero momentum.
 DEFAULT_LEARNING_RATES = (0.25, 0.5, 0.75, 1.0, 1.25)
 DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.03, 0.1)
 DEFAULT_ALPHAS = (0.5, 1.0, 1.5, 2.0, 3.0)
 DEFAULT_L2 = (0.5, 0.8, 1.2, 1.6, 2.0)
-DEFAULT_MOMENTUM_VALUES = (0.0, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95)
+DEFAULT_MOMENTUM_VALUES = (
+    -0.9, -0.7, -0.5, -0.3, -0.1, -0.05,
+    0.0, 0.05, 0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95,
+)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -103,8 +106,8 @@ def parse_args():
 def validate_args(args):
     if any(not np.isfinite(v) or v < 0 for v in args.l2_values):
         raise ValueError("l2 values must be finite and non-negative")
-    if any(not np.isfinite(v) or v < 0 or v >= 1 for v in args.momentum_values):
-        raise ValueError("momentum values must be finite, non-negative, and strictly less than 1")
+    if any(not np.isfinite(v) or abs(v) >= 1 for v in args.momentum_values):
+        raise ValueError("momentum values must be finite and in (-1, 1)")
     if args.trials <= 0:
         raise ValueError("--trials must be positive")
     if args.max_errors <= 0:

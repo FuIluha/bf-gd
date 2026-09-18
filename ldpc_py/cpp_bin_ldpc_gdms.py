@@ -115,8 +115,8 @@ class CppBinLdpcGdmsDecoder(BinLdpcDecoderBase):
         if not self.MOMENTUM_ENABLED and "momentum" in kwargs:
             raise ValueError("momentum is only supported by the C++ MGDMS decoder")
         self.momentum = float(kwargs.get("momentum", 0.0)) if self.MOMENTUM_ENABLED else 0.0
-        if not np.isfinite(self.momentum) or not 0 <= self.momentum < 1:
-            raise ValueError("momentum must be finite and in [0, 1)")
+        if not np.isfinite(self.momentum) or abs(self.momentum) >= 1:
+            raise ValueError("momentum must be finite and in (-1, 1)")
 
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")

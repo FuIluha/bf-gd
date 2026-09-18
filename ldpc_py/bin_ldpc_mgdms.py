@@ -15,8 +15,8 @@ class BinLdpcMgdmsDecoder(BinLdpcDecoderBase):
         self.l2 = float(kwargs.get("l2", 1.0))
         if not np.isfinite(self.l2) or self.l2 < 0:
             raise ValueError("l2 must be finite and non-negative")
-        if not np.isfinite(self.momentum) or self.momentum < 0 or self.momentum >= 1:
-            raise ValueError("momentum must be finite, non-negative, and less than 1")
+        if not np.isfinite(self.momentum) or abs(self.momentum) >= 1:
+            raise ValueError("momentum must be finite and in (-1, 1)")
 
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
