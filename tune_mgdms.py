@@ -57,6 +57,11 @@ def parse_args():
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-configs", type=int)
     parser.add_argument(
+        "--fixed-momentum",
+        action="store_true",
+        help="Keep all decoder parameters from the experiment JSON fixed and sweep only momentum.",
+    )
+    parser.add_argument(
         "--learning-rates",
         type=comma_separated_floats,
         default=DEFAULT_LEARNING_RATES,
@@ -115,6 +120,21 @@ def parameter_grid(args, base_params):
         "l2": float(base_params.get("l2", 1.0)),
         "momentum": float(base_params.get("momentum", 0.0)),
     }
+
+    if args.fixed_momentum:
+        candidates = []
+        for momentum in args.momentum_values:
+            candidates.append(
+                {
+                    "learning_rate": baseline["learning_rate"],
+                    "learning_rate_decay": baseline["learning_rate_decay"],
+                    "alpha": baseline["alpha"],
+                    "l2": baseline["l2"],
+                    "momentum": momentum,
+                }
+            )
+        return candidates
+
     candidates = [baseline]
     for values in itertools.product(
         args.learning_rates,
