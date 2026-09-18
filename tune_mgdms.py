@@ -11,18 +11,20 @@ from pathlib import Path
 import numpy as np
 
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
+from ldpc_py.cpp_bin_ldpc_gdms import lib_compile as gdms_compile
 from simulator_awgn_python.tools import load_json
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_mgdms.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_mgdms.txt"
+DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_mgdms.json"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_mgdms.txt"
 
-DEFAULT_LEARNING_RATES = (0.75,)
-DEFAULT_LEARNING_RATE_DECAYS = (0.03,)
-DEFAULT_ALPHAS = (2.0,)
-DEFAULT_L2 = (1.2,)
-DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.95 + 1e-9, 0.05), 6))
+# 5 * 4 * 5 * 5 * 7 = 3500 combinations, including the current baseline.
+DEFAULT_LEARNING_RATES = (0.25, 0.5, 0.75, 1.0, 1.25)
+DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.03, 0.1)
+DEFAULT_ALPHAS = (0.5, 1.0, 1.5, 2.0, 3.0)
+DEFAULT_L2 = (0.5, 0.8, 1.2, 1.6, 2.0)
+DEFAULT_MOMENTUM_VALUES = (0.0, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -59,20 +61,20 @@ def parse_args():
     parser.add_argument(
         "--quick-test",
         action="store_true",
-        help="Run a tiny smoke test with a few momentum values only, useful for checking that the decoder runs before a full sweep.",
+        help="Run a tiny smoke test with at most five parameter sets before a full sweep.",
     )
     parser.add_argument(
         "--full-grid",
         dest="full_grid",
         action="store_true",
-        help="Enumerate learning_rate, learning_rate_decay, alpha, l2 and momentum together. By default only momentum is swept while the other settings stay fixed from the JSON.",
+        default=True,
+        help="(default) Enumerate learning_rate, learning_rate_decay, alpha, l2 and momentum together.",
     )
     parser.add_argument(
         "--momentum-only",
         dest="full_grid",
         action="store_false",
-        default=False,
-        help="(default) Keep all decoder parameters from the experiment JSON fixed and sweep only momentum.",
+        help="Keep all decoder parameters from the experiment JSON fixed and sweep only momentum.",
     )
     parser.add_argument(
         "--learning-rates",
@@ -274,6 +276,8 @@ def main():
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
+    if base_experiment["codec"]["algorithm"] == "cpp momentum gradient descent min-sum":
+        gdms_compile()
     candidates = parameter_grid(
         args,
         base_experiment["codec"]["decoder_params"],

@@ -31,11 +31,7 @@ if [[ ! -x "$python_bin" ]] || ! "$python_bin" --version >/dev/null 2>&1; then
     exit 1
 fi
 
-if [[ "$*" != *"--full-grid"* ]] && [[ "$*" != *"--momentum-only"* ]]; then
-    set -- --momentum-only "$@"
-fi
-
 exec srun "$python_bin" tune_mgdms.py \
-    --config experiments/experiment_mgdms.json \
+    --config experiments/experiment_cpp_mgdms.json \
     --workers "${SLURM_CPUS_PER_TASK:-128}" \
     "$@"
