@@ -18,10 +18,10 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_mgdms.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_mgdms.txt"
 
-DEFAULT_LEARNING_RATES = (0.05, 0.1, 0.25, 0.5, 0.75, 1.0)
-DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.05, 0.1)
-DEFAULT_ALPHAS = (0.25, 0.5, 1.0, 2.0, 4.0)
-DEFAULT_L2 = (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
+DEFAULT_LEARNING_RATES = (0.75)
+DEFAULT_LEARNING_RATE_DECAYS = (0.03)
+DEFAULT_ALPHAS = (2.0)
+DEFAULT_L2 = (1.2)
 DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.95 + 1e-9, 0.05), 6))
 
 _BASE_EXPERIMENT = None
@@ -57,9 +57,17 @@ def parse_args():
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-configs", type=int)
     parser.add_argument(
-        "--fixed-momentum",
+        "--full-grid",
+        dest="full_grid",
         action="store_true",
-        help="Keep all decoder parameters from the experiment JSON fixed and sweep only momentum.",
+        help="Enumerate learning_rate, learning_rate_decay, alpha, l2 and momentum together. By default only momentum is swept while the other settings stay fixed from the JSON.",
+    )
+    parser.add_argument(
+        "--fixed-momentum",
+        dest="full_grid",
+        action="store_false",
+        default=False,
+        help="(default) Keep all decoder parameters from the experiment JSON fixed and sweep only momentum.",
     )
     parser.add_argument(
         "--learning-rates",
@@ -121,7 +129,7 @@ def parameter_grid(args, base_params):
         "momentum": float(base_params.get("momentum", 0.0)),
     }
 
-    if args.fixed_momentum:
+    if not args.full_grid:
         candidates = []
         for momentum in args.momentum_values:
             candidates.append(
