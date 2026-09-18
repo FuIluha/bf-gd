@@ -57,6 +57,11 @@ def parse_args():
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-configs", type=int)
     parser.add_argument(
+        "--quick-test",
+        action="store_true",
+        help="Run a tiny smoke test with a few momentum values only, useful for checking that the decoder runs before a full sweep.",
+    )
+    parser.add_argument(
         "--full-grid",
         dest="full_grid",
         action="store_true",
@@ -259,6 +264,10 @@ def default_workers(simulation_config):
 
 def main():
     args = parse_args()
+    if args.quick_test:
+        args.trials = min(args.trials, 5_000)
+        args.max_errors = min(args.max_errors, 3)
+        args.max_configs = min(args.max_configs or 5, 5)
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
@@ -307,6 +316,14 @@ def main():
                     flush=True,
                 )
                 continue
+            status = (
+                f"PROGRESS [{completed}/{len(candidates)}] "
+                f"FER={result['fer']:.6g}, "
+                f"BER={result['ber']:.6g}, "
+                f"avg_iter={result['average_iterations']:.3f}, "
+                f"params={json.dumps(result['decoder_params'], separators=(',', ':'))}"
+            )
+            print(status, flush=True)
             if best_result is None or result_score(result) < result_score(best_result):
                 best_result = result
                 save_best(output_path, result, args, completed, len(candidates))
