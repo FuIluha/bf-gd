@@ -1,0 +1,398 @@
+/* Fixed exploration viewport: navigation and distribution above a scrollable page. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: #222222;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 16px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app-shell {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pinned-distribution {
+  flex: 0 0 auto;
+  max-height: calc(100vh - 160px);
+  max-height: calc(100dvh - 160px);
+  overflow-y: auto;
+  background: #ffffff;
+  border-bottom: 1px solid #cccccc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+}
+
+.pinned-chart {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 8px 20px;
+  overflow: hidden;
+}
+
+.scroll-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.step-toolbar {
+  width: 100%;
+  border-bottom: 1px solid #cccccc;
+  background: #ffffff;
+}
+
+.step-toolbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 10px 20px;
+}
+
+.step-toolbar .button {
+  flex: 0 0 auto;
+  min-width: 140px;
+}
+
+.step-toolbar .iteration-badge {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  text-align: center;
+}
+
+.hero,
+.workspace {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.hero {
+  display: block;
+  padding-bottom: 10px;
+}
+
+.eyebrow {
+  margin-bottom: 4px;
+  color: #555555;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 30px;
+}
+
+h2 {
+  margin: 0 0 14px;
+  font-size: 19px;
+}
+
+.hero-copy,
+.dataset-pill,
+.hint,
+.card-heading p {
+  color: #555555;
+  line-height: 1.45;
+}
+
+.hero-copy {
+  margin: 0 0 12px;
+}
+
+.dataset-pill {
+  display: block;
+  padding: 10px;
+  border: 1px solid #cccccc;
+  background: #f7f7f7;
+  overflow-wrap: anywhere;
+}
+
+.workspace,
+.control-column,
+.content-column {
+  display: block;
+  width: 100%;
+}
+
+.workspace {
+  padding-top: 10px;
+}
+
+.control-card,
+.chart-card,
+.table-card,
+.metric-card {
+  display: block;
+  width: 100%;
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid #cccccc;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.field-label {
+  display: block;
+  margin: 12px 0 6px;
+  font-weight: bold;
+}
+
+.numeric-control {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.dataset-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.control-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.control-label-row .field-label {
+  margin: 0;
+}
+
+.number-input,
+.text-input {
+  width: 120px;
+  max-width: 100%;
+  padding: 7px;
+  border: 1px solid #999999;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #222222;
+}
+
+.number-input.full,
+.text-input,
+.full {
+  width: 100%;
+}
+
+.step-row,
+.button-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.step-row > *,
+.button-grid > * {
+  flex: 1 1 180px;
+}
+
+.button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #888888;
+  border-radius: 3px;
+  background: #eeeeee;
+  color: #222222;
+  cursor: pointer;
+}
+
+.button.primary {
+  border-color: #1769aa;
+  background: #1976d2;
+  color: #ffffff;
+}
+
+.button.ghost,
+.button.link {
+  margin-top: 8px;
+  background: #ffffff;
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.iteration-badge,
+.status-line,
+.plot-status {
+  display: block;
+  width: 100%;
+  margin: 8px 0 16px;
+  padding: 10px;
+  border: 1px solid #cccccc;
+  border-radius: 3px;
+  background: #f7f7f7;
+  overflow-wrap: anywhere;
+}
+
+.radio-stack label,
+.radio-row label {
+  display: inline-block;
+  margin: 4px 16px 4px 0;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.metric-card {
+  min-width: 0;
+  margin: 0;
+}
+
+.metric-label {
+  margin-bottom: 6px;
+  color: #555555;
+}
+
+.metric-value {
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  font-weight: bold;
+}
+
+.chart-card {
+  padding: 8px;
+  overflow: hidden;
+}
+
+.chart-card .js-plotly-plot,
+.chart-card .plot-container,
+.chart-card .svg-container,
+.pinned-chart .js-plotly-plot,
+.pinned-chart .plot-container,
+.pinned-chart .svg-container {
+  height: 560px !important;
+  min-height: 560px;
+  max-width: 100%;
+}
+
+.decision-summary {
+  padding: 8px;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.table-card {
+  overflow-x: auto;
+}
+
+.card-heading {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.card-heading p,
+.hint {
+  margin: 6px 0;
+}
+
+/* Dash dropdown (React Select) in the same light theme as native controls. */
+.Select-control,
+.Select-menu-outer,
+.Select-menu {
+  background: #ffffff !important;
+  color: #222222 !important;
+}
+
+.Select-value-label,
+.Select-placeholder,
+.Select-input > input {
+  color: #222222 !important;
+}
+
+.VirtualizedSelectOption {
+  background: #ffffff;
+  color: #222222;
+}
+
+.VirtualizedSelectFocusedOption {
+  background: #eeeeee;
+}
+
+@media (max-width: 600px) {
+  .step-toolbar-inner {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+  }
+
+  .step-toolbar .button {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+  }
+
+  .step-toolbar .iteration-badge {
+    flex: 1 0 100%;
+    order: -1;
+  }
+
+  .hero,
+  .workspace {
+    padding: 12px;
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+
+  .control-card,
+  .chart-card,
+  .table-card,
+  .metric-card {
+    padding: 10px;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .step-row,
+  .button-grid {
+    display: block;
+  }
+
+  .step-row > *,
+  .button-grid > * {
+    display: block;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .control-label-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .number-input {
+    width: 100%;
+  }
+}

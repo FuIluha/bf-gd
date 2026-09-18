@@ -7,7 +7,11 @@ class BinLdpcDecoderBase:
     """Common interface and utilities for LDPC decoders."""
 
     def __init__(self, alist_filename, **kwargs):
-        self.pcm = Alist.read(alist_filename).astype(np.uint8)
+        pcm = kwargs.pop("pcm", None)
+        self.pcm = (
+            Alist.read(alist_filename).astype(np.uint8)
+            if pcm is None else np.asarray(pcm, dtype=np.uint8)
+        )
 
         self.block_length = kwargs["block_length"]
         self.n_checks = kwargs["n_checks"]

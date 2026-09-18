@@ -2,8 +2,12 @@
 
 import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
+from visualisation.error_by_energy_visualisation.base import VisualizableDecoderBase, masked_samples
+from visualisation.error_by_energy_visualisation.models import (
+    CategorySpec, DecoderSpec, ObservableSpec, ParameterSpec, StepResult,
+)
 
-class BinLdpcGdmsDecoder(BinLdpcDecoderBase):
+class BinLdpcGdmsDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
     """Gradient-descent min-sum decoder with extrinsic edge states and L2 decay."""
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
@@ -36,6 +40,57 @@ class BinLdpcGdmsDecoder(BinLdpcDecoderBase):
             np.array([0]),
             np.cumsum(check_degrees),
         ))
+
+        if np.any(check_degrees < 2):
+            raise ValueError("GDMS requires check degree of at least two")
+
+    @classmethod
+    def describe(cls):
+        return DecoderSpec(
+            key="gdms", title="GDMS",
+            parameters=(
+                ParameterSpec("learning_rate", "learning_rate", "float", 0.75, 0.000001, 5.0, 0.01),
+                ParameterSpec("learning_rate_decay", "learning_rate_decay", "float", 0.03, 0.0, 5.0, 0.01),
+                ParameterSpec("alpha", "alpha", "float", 2.0, 0.0, 5.0, 0.01),
+                ParameterSpec("l2", "l2", "float", 1.2, 0.0, 5.0, 0.01),
+            ),
+            observables=(ObservableSpec("step", "Шаг сообщения Δq", True),),
+            categories=(
+                CategorySpec("toward_unchanged", "К истинному биту · решение не изменилось", "#2e7d32"),
+                CategorySpec("toward_changed", "К истинному биту · решение изменилось", "#66bb6a"),
+                CategorySpec("away_unchanged", "От истинного бита · решение не изменилось", "#ef6c00"),
+                CategorySpec("away_changed", "От истинного бита · решение изменилось", "#c62828"),
+            ),
+        )
+
+    def initial_state(self, received, parameters):
+        x = np.asarray(received, dtype=np.float64).copy()
+        return {"x": x, "q": x[self.edge_vn].copy()}
+
+    def step_state(self, state, received, parameters, iteration, rng):
+        next_x, next_q = self.update_state(
+            received, state["x"], state["q"], iteration, parameters,
+        )
+        return StepResult({"x": next_x, "q": next_q}, {"step": next_q - state["q"]})
+
+    def hard_decision(self, state):
+        return np.where(state["x"] >= 0, 1, -1).astype(np.int8)
+
+    def is_decoded(self, state):
+        return bool(np.all(self.bpsk_syndrome(self.hard_decision(state)) == 1))
+
+    def classify(self, before, after, diagnostics, active, transmitted):
+        step = diagnostics["step"]
+        toward = (step >= 0) == (transmitted[:, self.edge_vn] > 0)
+        changed = (before["q"] >= 0) != (after["q"] >= 0)
+        observed = np.broadcast_to(active[:, None], step.shape)
+        values = {"step": step}
+        return {
+            "toward_unchanged": masked_samples(observed & toward & ~changed, values),
+            "toward_changed": masked_samples(observed & toward & changed, values),
+            "away_unchanged": masked_samples(observed & ~toward & ~changed, values),
+            "away_changed": masked_samples(observed & ~toward & changed, values),
+        }
 
     def bpsk_syndrome(self, x):
         return np.multiply.reduceat(
@@ -85,40 +140,41 @@ class BinLdpcGdmsDecoder(BinLdpcDecoderBase):
         total = self.objective_gradient(y, check_messages)
         return total[self.edge_vn] - check_messages
 
-    def objective_gradient(self, y, check_messages):
+    def objective_gradient(self, y, check_messages, alpha=None):
         """Channel plus all current check messages, used as the bit-update direction."""
-        return self.alpha * y + np.bincount(
+        return (self.alpha if alpha is None else alpha) * y + np.bincount(
             self.edge_vn, weights=check_messages, minlength=self.block_length,
         )
 
-    def update_state(self, y, x, outgoing, iteration):
+    def update_state(self, y, x, outgoing, iteration, parameters=None):
+        parameters = parameters or {
+            "learning_rate": self.learning_rate,
+            "learning_rate_decay": self.learning_rate_decay,
+            "alpha": self.alpha,
+            "l2": self.l2,
+        }
         incoming = self.check_to_variable_messages(outgoing)
-        total = self.objective_gradient(y, incoming)
-        eta = self.learning_rate / np.sqrt(1 + self.learning_rate_decay * iteration)
-        next_q = outgoing + eta * (total[self.edge_vn] - incoming - self.l2 * outgoing)
-        next_x = x + eta * (total - self.l2 * x)
+        total = self.objective_gradient(y, incoming, parameters["alpha"])
+        eta = parameters["learning_rate"] / np.sqrt(1 + parameters["learning_rate_decay"] * iteration)
+        next_q = outgoing + eta * (total[self.edge_vn] - incoming - parameters["l2"] * outgoing)
+        next_x = x + eta * (total - parameters["l2"] * x)
         if not np.all(np.isfinite(next_q)) or not np.all(np.isfinite(next_x)):
             raise FloatingPointError("Non-finite GDMS state")
         return next_x, next_q
 
     def decode(self, llr_in, llr_out, rng=None):
         y = llr_in.astype(np.float64, copy=True)
-        x = y.copy()
-        outgoing = y[self.edge_vn].copy()
+        parameters = {"learning_rate": self.learning_rate,
+                      "learning_rate_decay": self.learning_rate_decay,
+                      "alpha": self.alpha, "l2": self.l2}
+        state = self.initial_state(y, parameters)
 
         for iteration in range(self.n_iterations): # iteration loop
-            hard_x = np.where(x >= 0, 1, -1).astype(np.int8)
-            check_syndromes = self.bpsk_syndrome(hard_x) # syndrome
-
-            if np.all(check_syndromes == 1):
-                llr_out[:] = x
+            if self.is_decoded(state):
+                llr_out[:] = state["x"]
                 return iteration # exit the iteration loop;
 
-            x, outgoing = self.update_state(y, x, outgoing, iteration)
+            state = self.step_state(state, y, parameters, iteration, rng).fields
 
-        llr_out[:] = x
+        llr_out[:] = state["x"]
         return self.n_iterations
-
-
-# Backward-compatible class name for downstream code using the legacy API.
-BinLdpcSoftGdbfDecoder = BinLdpcGdmsDecoder
