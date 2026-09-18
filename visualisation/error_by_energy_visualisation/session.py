@@ -1,35 +1,27 @@
-"""Linear, immutable decoder history and portable session persistence."""
+"""Linear immutable decoder history and portable session persistence."""
 
 from dataclasses import dataclass
 import hashlib
 from io import BytesIO
 import json
 from threading import RLock
+from types import MappingProxyType
 from typing import Optional
 
 import numpy as np
 
-from .algorithms import BatchDecoderEngine, TannerGraph, calculate_metrics, initial_state
-from .models import (
-    Algorithm,
-    ComparisonHistory,
-    DecoderState,
-    FrameBatch,
-    FtgdbfParameters,
-    PmgdbfParameters,
-    Snapshot,
-    TransitionRecord,
-    parameters_from_dict,
-)
+from .algorithms import BatchDecoderEngine, TannerGraph
+from .models import ComparisonHistory, DecoderState, FrameBatch, Snapshot, TransitionRecord
+from .supported import decoder_catalog, decoder_class
 
 
 SESSION_FORMAT = "bf-gd-energy-explorer"
-SESSION_VERSION = 1
+SESSION_VERSION = 2
 
 
 @dataclass(frozen=True)
 class SessionView:
-    algorithm: Algorithm
+    algorithm: str
     cursor: int
     snapshots: tuple
     transitions: tuple
@@ -38,44 +30,42 @@ class SessionView:
 
 
 class ExplorerSession:
-    """Own one user's state; every forward transition creates a new snapshot."""
-
-    def __init__(
-        self,
-        graph,
-        batch,
-        seed,
-        workers=1,
-        algorithm=Algorithm.FTGDBF,
-        momentum_length=7,
-        metadata=None,
-    ):
-        self.graph = graph
-        self.batch = batch
-        self.seed = int(seed)
+    def __init__(self, graph, batch, seed, workers=1, algorithm=None, metadata=None):
+        self.graph, self.batch, self.seed = graph, batch, int(seed)
         self.workers = max(1, int(workers))
         self.metadata = dict(metadata or {})
         self.metadata["batch_digest"] = _batch_digest(batch)
         self.lock = RLock()
         self.comparison = None
-        self.engine = BatchDecoderEngine(
-            graph,
-            batch,
-            seed=self.seed,
-            workers=self.workers,
-        )
-        self.reset(algorithm, momentum_length)
+        self.engine = BatchDecoderEngine(graph, batch, seed=self.seed, workers=self.workers)
+        self._pcm = np.zeros((graph.n_checks, graph.block_length), dtype=np.uint8)
+        self._pcm[graph.edge_cn, graph.edge_vn] = 1
+        self.reset(algorithm or next(iter(decoder_catalog())))
 
-    def reset(self, algorithm, momentum_length=7):
+    @property
+    def decoder(self):
+        return self._decoder
+
+    @property
+    def spec(self):
+        return self.decoder.describe()
+
+    def reset(self, algorithm, parameters=None):
         with self.lock:
-            self.algorithm = Algorithm(algorithm)
-            state = _freeze_state(
-                initial_state(self.batch, self.algorithm, int(momentum_length))
+            decoder_type = decoder_class(algorithm)
+            parsed = decoder_type.validate_parameters(
+                parameters or decoder_type.describe().defaults(),
             )
-            metrics = calculate_metrics(state.x, self.batch.transmitted_symbols)
+            decoder = decoder_type(
+                None, pcm=self._pcm, block_length=self.graph.block_length,
+                n_checks=self.graph.n_checks, n_iterations=1,
+                is_systematic=False, **parsed,
+            )
+            state = _freeze_state(self.engine.initial_state(decoder, parsed))
+            metrics = self.engine._metrics(decoder, state.fields)
+            self.algorithm, self._decoder = algorithm, decoder
             self.snapshots = [Snapshot(0, state, metrics)]
-            self.transitions = []
-            self.cursor = 0
+            self.transitions, self.cursor = [], 0
 
     @property
     def current(self):
@@ -83,32 +73,19 @@ class ExplorerSession:
 
     def preview(self, parameters):
         with self.lock:
-            _validate_parameter_type(self.algorithm, parameters)
-            return self.engine.step(
-                self.current.state,
-                parameters,
-                self.cursor,
-            )
+            parsed = self.decoder.validate_parameters(parameters)
+            return self.engine.step(self.decoder, self.current.state, parsed, self.cursor)
 
     def step_forward(self, parameters):
         with self.lock:
-            next_state, observation = self.preview(parameters)
+            parsed = self.decoder.validate_parameters(parameters)
+            next_state, observation = self.preview(parsed)
             del self.snapshots[self.cursor + 1:]
             del self.transitions[self.cursor:]
-            next_state = _freeze_state(next_state)
-            next_snapshot = Snapshot(
-                iteration=self.cursor + 1,
-                state=next_state,
-                metrics=observation.after,
-            )
             self.transitions.append(TransitionRecord(
-                from_iteration=self.cursor,
-                to_iteration=self.cursor + 1,
-                parameters=parameters,
-                before=observation.before,
-                after=observation.after,
+                self.cursor, self.cursor + 1, parsed, observation.before, observation.after,
             ))
-            self.snapshots.append(next_snapshot)
+            self.snapshots.append(Snapshot(self.cursor + 1, _freeze_state(next_state), observation.after))
             self.cursor += 1
             return observation
 
@@ -121,48 +98,31 @@ class ExplorerSession:
     def view(self):
         with self.lock:
             return SessionView(
-                algorithm=self.algorithm,
-                cursor=self.cursor,
-                snapshots=tuple(self.snapshots),
-                transitions=tuple(self.transitions),
-                comparison=self.comparison,
-                metadata=dict(self.metadata),
+                self.algorithm, self.cursor, tuple(self.snapshots), tuple(self.transitions),
+                self.comparison, dict(self.metadata),
             )
 
     def to_bytes(self):
         with self.lock:
+            names = list(self.snapshots[0].state.fields)
             metadata = {
-                "format": SESSION_FORMAT,
-                "version": SESSION_VERSION,
-                "algorithm": self.algorithm.value,
-                "cursor": self.cursor,
-                "seed": self.seed,
-                "workers": self.workers,
-                "dataset": self.metadata,
+                "format": SESSION_FORMAT, "version": SESSION_VERSION,
+                "algorithm": self.algorithm, "cursor": self.cursor, "seed": self.seed,
+                "workers": self.workers, "dataset": self.metadata, "fields": names,
                 "transitions": [item.to_dict() for item in self.transitions],
-                "has_ages": self.snapshots[0].state.ages is not None,
             }
             arrays = {
                 "metadata": np.asarray(json.dumps(metadata)),
                 "received": self.batch.received,
                 "transmitted_symbols": self.batch.transmitted_symbols,
-                "edge_cn": self.graph.edge_cn,
-                "edge_vn": self.graph.edge_vn,
+                "edge_cn": self.graph.edge_cn, "edge_vn": self.graph.edge_vn,
                 "check_offsets": self.graph.check_offsets,
-                "states_x": np.stack(
-                    [item.state.x for item in self.snapshots],
-                    axis=0,
-                ),
-                "states_active": np.stack(
-                    [item.state.active for item in self.snapshots],
-                    axis=0,
-                ),
+                "states_active": np.stack([item.state.active for item in self.snapshots]),
             }
-            if metadata["has_ages"]:
-                arrays["states_ages"] = np.stack(
-                    [item.state.ages for item in self.snapshots],
-                    axis=0,
-                )
+            for name in names:
+                arrays[f"state_{name}"] = np.stack([
+                    item.state.fields[name] for item in self.snapshots
+                ])
             output = BytesIO()
             np.savez_compressed(output, **arrays)
             return output.getvalue()
@@ -170,91 +130,62 @@ class ExplorerSession:
     @classmethod
     def from_bytes(cls, payload, workers=None):
         with np.load(BytesIO(payload), allow_pickle=False) as archive:
-            required = {
-                "metadata",
-                "received",
-                "transmitted_symbols",
-                "edge_cn",
-                "edge_vn",
-                "check_offsets",
-                "states_x",
-                "states_active",
-            }
-            missing = required.difference(archive.files)
-            if missing:
-                raise ValueError(f"session is missing arrays: {sorted(missing)}")
+            required = {"metadata", "received", "transmitted_symbols", "edge_cn", "edge_vn", "check_offsets", "states_active"}
+            if not required.issubset(archive.files):
+                raise ValueError("Session archive is incomplete")
             metadata = json.loads(str(archive["metadata"].item()))
-            _validate_metadata(metadata)
-            batch = FrameBatch(
-                received=np.ascontiguousarray(archive["received"]),
-                transmitted_symbols=np.ascontiguousarray(
-                    archive["transmitted_symbols"]
-                ),
-            )
+            if metadata.get("format") != SESSION_FORMAT or metadata.get("version") != SESSION_VERSION:
+                raise ValueError("Unsupported session format/version")
+            decoder_class(metadata["algorithm"])
+            names = metadata["fields"]
+            if not names or len(names) != len(set(names)) or any(
+                not isinstance(name, str) or not name.isidentifier() for name in names
+            ):
+                raise ValueError("Invalid state field names")
+            batch = FrameBatch(np.ascontiguousarray(archive["received"]), np.ascontiguousarray(archive["transmitted_symbols"]))
             batch.validate()
             graph = TannerGraph(
-                block_length=batch.block_length,
-                n_checks=len(archive["check_offsets"]) - 1,
-                edge_cn=np.ascontiguousarray(archive["edge_cn"], dtype=np.int32),
-                edge_vn=np.ascontiguousarray(archive["edge_vn"], dtype=np.int32),
-                check_offsets=np.ascontiguousarray(
-                    archive["check_offsets"], dtype=np.int32
-                ),
+                batch.block_length, len(archive["check_offsets"]) - 1,
+                np.ascontiguousarray(archive["edge_cn"], dtype=np.int32),
+                np.ascontiguousarray(archive["edge_vn"], dtype=np.int32),
+                np.ascontiguousarray(archive["check_offsets"], dtype=np.int32),
             )
             graph.validate()
-            states_x = archive["states_x"]
-            states_active = archive["states_active"]
-            if states_x.ndim != 3 or states_x.shape[1:] != batch.received.shape:
-                raise ValueError("saved decoder states have an invalid shape")
-            if states_x.shape[0] == 0:
-                raise ValueError("session history must contain an initial state")
-            if states_active.shape != states_x.shape[:2]:
-                raise ValueError("saved active masks have an invalid shape")
-            if not np.all(np.isin(states_x, (-1, 1))):
-                raise ValueError("saved decoder states are not binary signs")
-            if metadata["has_ages"]:
-                if "states_ages" not in archive.files:
-                    raise ValueError("PMGDBF session does not contain ages")
-                states_ages = archive["states_ages"]
-                if states_ages.shape != states_x.shape:
-                    raise ValueError("saved momentum ages have an invalid shape")
-                if np.any(states_ages < 0):
-                    raise ValueError("saved momentum ages must be non-negative")
-            else:
-                states_ages = None
-
+            active = archive["states_active"]
+            if active.ndim != 2 or active.shape[1] != batch.frames or active.shape[0] < 1:
+                raise ValueError("Invalid saved active masks")
+            states = {}
+            for name in names:
+                key = f"state_{name}"
+                if key not in archive.files:
+                    raise ValueError(f"Missing decoder state: {name}")
+                states[name] = archive[key]
+                if states[name].shape[0] != active.shape[0] or states[name].shape[1] != batch.frames:
+                    raise ValueError(f"Invalid shape of decoder state: {name}")
             session = cls(
-                graph=graph,
-                batch=batch,
-                seed=int(metadata["seed"]),
+                graph, batch, int(metadata["seed"]),
                 workers=int(metadata["workers"] if workers is None else workers),
-                algorithm=metadata["algorithm"],
-                metadata=metadata.get("dataset", {}),
+                algorithm=metadata["algorithm"], metadata=metadata.get("dataset", {}),
             )
-            session.metadata["workers"] = session.workers
             session.snapshots = []
-            for index in range(states_x.shape[0]):
-                state = _freeze_state(DecoderState(
-                    x=states_x[index],
-                    active=states_active[index],
-                    ages=None if states_ages is None else states_ages[index],
+            for index in range(active.shape[0]):
+                state = _freeze_state(DecoderState({name: states[name][index] for name in names}, active[index]))
+                metrics = session.engine._metrics(session.decoder, state.fields)
+                session.snapshots.append(Snapshot(index, state, metrics))
+            rows = metadata["transitions"]
+            if len(rows) != len(session.snapshots) - 1:
+                raise ValueError("Transition and snapshot counts differ")
+            session.transitions = []
+            for index, row in enumerate(rows):
+                if row["from_iteration"] != index or row["to_iteration"] != index + 1:
+                    raise ValueError("Session history is not linear")
+                session.transitions.append(TransitionRecord(
+                    index, index + 1, session.decoder.validate_parameters(row["parameters"]),
+                    session.snapshots[index].metrics, session.snapshots[index + 1].metrics,
                 ))
-                session.snapshots.append(Snapshot(
-                    iteration=index,
-                    state=state,
-                    metrics=calculate_metrics(
-                        state.x,
-                        batch.transmitted_symbols,
-                    ),
-                ))
-            session.transitions = _restore_transitions(
-                metadata["algorithm"],
-                metadata["transitions"],
-                session.snapshots,
-            )
             session.cursor = int(metadata["cursor"])
             if not 0 <= session.cursor < len(session.snapshots):
-                raise ValueError("saved cursor is outside the history")
+                raise ValueError("Saved cursor outside history")
             session.batch.received.setflags(write=False)
             session.batch.transmitted_symbols.setflags(write=False)
             return session
@@ -262,43 +193,27 @@ class ExplorerSession:
     def comparison_history(self, name):
         with self.lock:
             return ComparisonHistory(
-                name=name,
-                algorithm=self.algorithm.title,
-                iterations=np.arange(len(self.snapshots), dtype=np.int32),
-                ber=np.asarray(
-                    [item.metrics.ber for item in self.snapshots],
-                    dtype=np.float64,
-                ),
-                fer=np.asarray(
-                    [item.metrics.fer for item in self.snapshots],
-                    dtype=np.float64,
-                ),
-                metadata=dict(self.metadata),
+                name, self.spec.title, np.arange(len(self.snapshots), dtype=np.int32),
+                np.asarray([item.metrics.ber for item in self.snapshots]),
+                np.asarray([item.metrics.fer for item in self.snapshots]), dict(self.metadata),
             )
 
 
 def comparison_from_bytes(payload, name="comparison"):
-    session = ExplorerSession.from_bytes(payload, workers=1)
-    return session.comparison_history(name)
+    return ExplorerSession.from_bytes(payload, workers=1).comparison_history(name)
 
 
 def compatible_datasets(left, right):
-    """Require exact fixed inputs before overlaying performance histories."""
-    left_digest = left.get("batch_digest")
-    right_digest = right.get("batch_digest")
-    return bool(left_digest) and left_digest == right_digest
+    return bool(left.get("batch_digest")) and left["batch_digest"] == right.get("batch_digest")
 
 
 def _freeze_state(state):
-    x = np.array(state.x, copy=True, dtype=np.int8, order="C")
+    fields = {key: np.array(value, copy=True, order="C") for key, value in state.fields.items()}
     active = np.array(state.active, copy=True, dtype=bool, order="C")
-    ages = None
-    if state.ages is not None:
-        ages = np.array(state.ages, copy=True, dtype=np.int16, order="C")
-        ages.setflags(write=False)
-    x.setflags(write=False)
+    for value in fields.values():
+        value.setflags(write=False)
     active.setflags(write=False)
-    return DecoderState(x=x, active=active, ages=ages)
+    return DecoderState(MappingProxyType(fields), active)
 
 
 def _batch_digest(batch):
@@ -306,44 +221,3 @@ def _batch_digest(batch):
     digest.update(np.ascontiguousarray(batch.received).view(np.uint8))
     digest.update(np.ascontiguousarray(batch.transmitted_symbols).view(np.uint8))
     return digest.hexdigest()
-
-
-def _validate_parameter_type(algorithm, parameters):
-    expected = FtgdbfParameters if algorithm is Algorithm.FTGDBF else PmgdbfParameters
-    if not isinstance(parameters, expected):
-        raise ValueError(f"parameters do not belong to {algorithm.title}")
-
-
-def _validate_metadata(metadata):
-    if metadata.get("format") != SESSION_FORMAT:
-        raise ValueError("file is not an energy explorer session")
-    if metadata.get("version") != SESSION_VERSION:
-        raise ValueError("unsupported session version")
-    algorithm = Algorithm(metadata.get("algorithm"))
-    if bool(metadata.get("has_ages")) != (algorithm is Algorithm.PMGDBF):
-        raise ValueError("session state does not match its algorithm")
-    if not isinstance(metadata.get("dataset"), dict):
-        raise ValueError("session dataset metadata is invalid")
-    if int(metadata.get("workers", 0)) <= 0:
-        raise ValueError("session worker count is invalid")
-    int(metadata.get("seed"))
-    int(metadata.get("cursor"))
-    if not isinstance(metadata.get("transitions"), list):
-        raise ValueError("session transitions are invalid")
-
-
-def _restore_transitions(algorithm, rows, snapshots):
-    if len(rows) != len(snapshots) - 1:
-        raise ValueError("transition and snapshot counts do not match")
-    transitions = []
-    for index, row in enumerate(rows):
-        if row.get("from_iteration") != index or row.get("to_iteration") != index + 1:
-            raise ValueError("session history is not linear")
-        transitions.append(TransitionRecord(
-            from_iteration=index,
-            to_iteration=index + 1,
-            parameters=parameters_from_dict(algorithm, row["parameters"]),
-            before=snapshots[index].metrics,
-            after=snapshots[index + 1].metrics,
-        ))
-    return transitions

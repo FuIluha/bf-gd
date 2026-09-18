@@ -96,10 +96,7 @@ def validate_args(args):
 def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
-    if experiment["codec"].get("algorithm") not in {
-        "cpp gradient descent min-sum",
-        "cpp soft gradient descent bit-flipping",
-    }:
+    if experiment["codec"].get("algorithm") != "cpp gradient descent min-sum":
         raise ValueError("the selected config must use the C++ GDMS decoder")
     return experiment, config.get("simulation", {})
 

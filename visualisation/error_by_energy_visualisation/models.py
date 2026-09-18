@@ -1,70 +1,90 @@
-"""Domain models for the interactive decision-energy explorer."""
+"""Framework-neutral contracts for step-wise LDPC visualisation."""
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Optional, Tuple, Union
+from typing import Mapping, Optional, Tuple
 
 import numpy as np
 
 
-class Algorithm(str, Enum):
-    FTGDBF = "ftgdbf"
-    PMGDBF = "pmgdbf"
+@dataclass(frozen=True)
+class ParameterSpec:
+    key: str
+    label: str
+    kind: str
+    default: object
+    minimum: Optional[float] = None
+    maximum: Optional[float] = None
+    step: Optional[float] = None
 
-    @property
-    def title(self):
-        if self is Algorithm.FTGDBF:
-            return "FTGDBF"
-        return "PMGDBF"
+    def parse(self, raw):
+        if raw is None:
+            raise ValueError(f"Параметр {self.label} не задан")
+        if self.kind == "float":
+            value = float(raw)
+        elif self.kind == "int":
+            numeric = float(raw)
+            if not numeric.is_integer():
+                raise ValueError(f"{self.label} должен быть целым")
+            value = int(numeric)
+        elif self.kind == "float_list":
+            if isinstance(raw, str):
+                value = [float(part.strip()) for part in raw.split(",")]
+            else:
+                value = [float(part) for part in raw]
+            if not value:
+                raise ValueError(f"{self.label} не должен быть пустым")
+        else:
+            raise ValueError(f"Неизвестный тип параметра: {self.kind}")
+        values = value if isinstance(value, list) else [value]
+        if not all(np.isfinite(item) for item in values):
+            raise ValueError(f"{self.label} должен содержать конечные числа")
+        if self.minimum is not None and any(item < self.minimum for item in values):
+            raise ValueError(f"{self.label} меньше {self.minimum:g}")
+        if self.maximum is not None and any(item > self.maximum for item in values):
+            raise ValueError(f"{self.label} больше {self.maximum:g}")
+        return value
 
 
 @dataclass(frozen=True)
-class FtgdbfParameters:
-    alpha: float
-
-    def validate(self):
-        if not np.isfinite(self.alpha) or self.alpha < 0:
-            raise ValueError("alpha must be finite and non-negative")
-
-    def to_dict(self):
-        return {"alpha": float(self.alpha)}
+class ObservableSpec:
+    key: str
+    label: str
+    zero_line: bool = False
 
 
 @dataclass(frozen=True)
-class PmgdbfParameters:
-    delta: float
-    alpha: float
-    p: float
-    rho: Tuple[float, ...]
-    L: int
+class CategorySpec:
+    key: str
+    label: str
+    color: str
+
+
+@dataclass(frozen=True)
+class DecoderSpec:
+    key: str
+    title: str
+    parameters: Tuple[ParameterSpec, ...]
+    observables: Tuple[ObservableSpec, ...]
+    categories: Tuple[CategorySpec, ...]
 
     def validate(self):
-        if not np.isfinite(self.delta) or self.delta < 0:
-            raise ValueError("delta must be finite and non-negative")
-        if not np.isfinite(self.alpha) or self.alpha < 0:
-            raise ValueError("alpha must be finite and non-negative")
-        if not np.isfinite(self.p) or not 0 <= self.p <= 1:
-            raise ValueError("p must be finite and in [0, 1]")
-        if self.L <= 0:
-            raise ValueError("L must be positive")
-        if self.L >= np.iinfo(np.int16).max:
-            raise ValueError("L is too large for the stored momentum age")
-        if len(self.rho) != self.L:
-            raise ValueError("the number of rho values must equal L")
-        if not all(np.isfinite(value) for value in self.rho):
-            raise ValueError("all rho values must be finite")
+        if not self.key or not self.title or not self.observables or not self.categories:
+            raise ValueError("Decoder description is incomplete")
+        for group in (self.parameters, self.observables, self.categories):
+            keys = [item.key for item in group]
+            if len(keys) != len(set(keys)) or any(not key for key in keys):
+                raise ValueError("Decoder description contains duplicate/empty keys")
+        for parameter in self.parameters:
+            parameter.parse(parameter.default)
 
-    def to_dict(self):
+    def parse_parameters(self, values):
         return {
-            "delta": float(self.delta),
-            "alpha": float(self.alpha),
-            "p": float(self.p),
-            "rho": [float(value) for value in self.rho],
-            "L": int(self.L),
+            item.key: item.parse(values[item.key])
+            for item in self.parameters
         }
 
-
-DecoderParameters = Union[FtgdbfParameters, PmgdbfParameters]
+    def defaults(self):
+        return self.parse_parameters({item.key: item.default for item in self.parameters})
 
 
 @dataclass(frozen=True)
@@ -73,16 +93,14 @@ class FrameBatch:
     transmitted_symbols: np.ndarray
 
     def validate(self):
-        if self.received.ndim != 2:
-            raise ValueError("received must have shape (frames, block_length)")
-        if self.received.shape[0] == 0 or self.received.shape[1] == 0:
-            raise ValueError("frame batch must not be empty")
-        if not np.issubdtype(self.received.dtype, np.floating):
-            raise ValueError("received symbols must use a floating-point dtype")
-        if not np.all(np.isfinite(self.received)):
-            raise ValueError("received symbols must be finite")
+        if self.received.ndim != 2 or 0 in self.received.shape:
+            raise ValueError("received must have non-empty (frames, bits) shape")
         if self.transmitted_symbols.shape != self.received.shape:
-            raise ValueError("received and transmitted_symbols shapes must match")
+            raise ValueError("received and transmitted shapes must match")
+        if not np.issubdtype(self.received.dtype, np.floating):
+            raise ValueError("received must be floating-point")
+        if not np.all(np.isfinite(self.received)):
+            raise ValueError("received must be finite")
         if not np.all(np.isin(self.transmitted_symbols, (-1, 1))):
             raise ValueError("transmitted symbols must be -1 or +1")
 
@@ -97,9 +115,23 @@ class FrameBatch:
 
 @dataclass(frozen=True)
 class DecoderState:
-    x: np.ndarray
+    fields: Mapping[str, np.ndarray]
     active: np.ndarray
-    ages: Optional[np.ndarray] = None
+
+
+@dataclass(frozen=True)
+class StepResult:
+    fields: Mapping[str, np.ndarray]
+    diagnostics: Mapping[str, np.ndarray]
+
+
+@dataclass(frozen=True)
+class CategorySamples:
+    """One category; observations may also occur in other categories."""
+
+    frame_indices: np.ndarray
+    entity_indices: np.ndarray
+    values: Mapping[str, np.ndarray]
 
 
 @dataclass(frozen=True)
@@ -120,12 +152,7 @@ class Metrics:
 
 @dataclass(frozen=True)
 class StepObservation:
-    energy: np.ndarray
-    threshold: np.ndarray
-    margin: np.ndarray
-    should_flip: np.ndarray
-    flip_mask: np.ndarray
-    correct_action: np.ndarray
+    categories: Mapping[str, CategorySamples]
     decision_frames: np.ndarray
     before: Metrics
     after: Metrics
@@ -142,7 +169,7 @@ class Snapshot:
 class TransitionRecord:
     from_iteration: int
     to_iteration: int
-    parameters: DecoderParameters
+    parameters: Mapping[str, object]
     before: Metrics
     after: Metrics
 
@@ -150,7 +177,7 @@ class TransitionRecord:
         return {
             "from_iteration": self.from_iteration,
             "to_iteration": self.to_iteration,
-            "parameters": self.parameters.to_dict(),
+            "parameters": dict(self.parameters),
             "before": self.before.to_dict(),
             "after": self.after.to_dict(),
         }
@@ -159,10 +186,8 @@ class TransitionRecord:
 @dataclass(frozen=True)
 class HistogramResult:
     edges: np.ndarray
-    correct_counts: np.ndarray
-    incorrect_counts: np.ndarray
-    correct_values: np.ndarray
-    incorrect_values: np.ndarray
+    counts: Mapping[str, np.ndarray]
+    values: Mapping[str, np.ndarray]
     method: str
 
 
@@ -174,46 +199,3 @@ class ComparisonHistory:
     ber: np.ndarray
     fer: np.ndarray
     metadata: dict
-
-
-def parameters_from_dict(algorithm, values):
-    algorithm = Algorithm(algorithm)
-    if algorithm is Algorithm.FTGDBF:
-        result = FtgdbfParameters(alpha=float(values["alpha"]))
-    else:
-        result = PmgdbfParameters(
-            delta=float(values["delta"]),
-            alpha=float(values["alpha"]),
-            p=float(values["p"]),
-            rho=tuple(float(value) for value in values["rho"]),
-            L=int(values["L"]),
-        )
-    result.validate()
-    return result
-
-
-def parse_rho(value):
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError("rho must not be empty")
-    try:
-        result = tuple(float(item.strip()) for item in value.split(","))
-    except (AttributeError, ValueError) as exc:
-        raise ValueError("rho must be a comma-separated list of numbers") from exc
-    if not result:
-        raise ValueError("rho must not be empty")
-    return result
-
-
-def parameter_history_rows(transitions):
-    rows = []
-    for transition in transitions:
-        params = transition.parameters.to_dict()
-        rows.append({
-            "step": f"{transition.from_iteration} → {transition.to_iteration}",
-            "parameters": ", ".join(
-                f"{key}={value}" for key, value in params.items()
-            ),
-            "ber": transition.after.ber,
-            "fer": transition.after.fer,
-        })
-    return rows

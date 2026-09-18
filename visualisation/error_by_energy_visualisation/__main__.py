@@ -13,7 +13,7 @@ DEFAULT_CODE = PROJECT_ROOT / "codes" / "ldpc_savin_4_8_12_24_Zc54.json"
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        description="Interactive FTGDBF/PMGDBF decision-energy explorer.",
+        description="Interactive LDPC decoder diagnostic explorer.",
     )
     parser.add_argument("--code", type=Path, default=DEFAULT_CODE)
     parser.add_argument("--frames", type=int, default=1_000)

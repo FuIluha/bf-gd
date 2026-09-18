@@ -10,17 +10,15 @@ from .histogram import histogram_heights
 
 
 def histogram_csv(histogram, mode):
-    correct, incorrect = histogram_heights(histogram, mode)
+    heights = histogram_heights(histogram, mode)
     output = StringIO()
     writer = csv.writer(output, lineterminator="\n")
     writer.writerow([
         "bin_left",
         "bin_right",
         "bin_center",
-        f"correct_{mode}",
-        f"incorrect_{mode}",
-        "correct_count",
-        "incorrect_count",
+        *[f"{key}_{mode}" for key in histogram.counts],
+        *[f"{key}_count" for key in histogram.counts],
     ])
     for index in range(len(histogram.edges) - 1):
         left = histogram.edges[index]
@@ -29,18 +27,19 @@ def histogram_csv(histogram, mode):
             left,
             right,
             (left + right) / 2.0,
-            correct[index],
-            incorrect[index],
-            histogram.correct_counts[index],
-            histogram.incorrect_counts[index],
+            *[heights[key][index] for key in histogram.counts],
+            *[histogram.counts[key][index] for key in histogram.counts],
         ])
     return output.getvalue()
 
 
-def summary_json(view, observation, histogram, display_settings):
+def summary_json(view, observation, histogram, display_settings, decoder_spec):
     payload = {
-        "schema": "bf-gd-energy-view/v1",
-        "algorithm": view.algorithm.value,
+        "schema": "bf-gd-energy-view/v2",
+        "algorithm": view.algorithm,
+        "decoder_title": decoder_spec.title,
+        "observables": {item.key: item.label for item in decoder_spec.observables},
+        "categories": {item.key: item.label for item in decoder_spec.categories},
         "current_iteration": view.cursor,
         "dataset": view.metadata,
         "current_metrics": view.snapshots[view.cursor].metrics.to_dict(),
@@ -50,8 +49,7 @@ def summary_json(view, observation, histogram, display_settings):
             "method": histogram.method,
             "settings": dict(display_settings),
             "edges": histogram.edges.tolist(),
-            "correct_counts": histogram.correct_counts.tolist(),
-            "incorrect_counts": histogram.incorrect_counts.tolist(),
+            "category_counts": {key: value.tolist() for key, value in histogram.counts.items()},
         },
         "history": [transition.to_dict() for transition in view.transitions],
     }

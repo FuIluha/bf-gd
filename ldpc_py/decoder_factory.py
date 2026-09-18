@@ -23,9 +23,7 @@ _DECODER_TYPES = {
     "edge-wise gradient descent bit-flipping": BinLdpcEgdbfDecoder,
     "cpp edge-wise gradient descent bit-flipping": CppBinLdpcEgdbfDecoder,
     "gradient descent min-sum": BinLdpcGdmsDecoder,
-    "soft gradient descent bit-flipping": BinLdpcGdmsDecoder,
     "cpp gradient descent min-sum": CppBinLdpcGdmsDecoder,
-    "cpp soft gradient descent bit-flipping": CppBinLdpcGdmsDecoder,
 }
 
 def create_decoder(algorithm, alist_filename, **kwargs):

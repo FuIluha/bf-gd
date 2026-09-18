@@ -9,30 +9,22 @@ MIN_ADAPTIVE_BINS = 10
 MAX_ADAPTIVE_BINS = 250
 
 
-def build_histogram(observation, value_kind="energy", bins="adaptive"):
-    """Split values by correctness and place both groups on common bin edges."""
-    if value_kind == "energy":
-        values = observation.energy
-    elif value_kind == "margin":
-        values = observation.margin
-    else:
-        raise ValueError("value_kind must be 'energy' or 'margin'")
-
-    decision_mask = np.broadcast_to(
-        observation.decision_frames[:, None],
-        values.shape,
-    )
-    finite = np.isfinite(values) & decision_mask
-    correct_values = values[finite & observation.correct_action]
-    incorrect_values = values[finite & ~observation.correct_action]
-    combined = np.concatenate((correct_values, incorrect_values))
+def build_histogram(observation, observable_key, category_keys, bins="adaptive"):
+    """Place selected decoder-defined categories on shared bin edges."""
+    values = {}
+    for key in category_keys:
+        category = observation.categories.get(key)
+        sample = (
+            np.asarray(category.values[observable_key], dtype=np.float64)
+            if category is not None else np.empty(0, dtype=np.float64)
+        )
+        values[key] = sample[np.isfinite(sample)]
+    combined = np.concatenate(list(values.values())) if values else np.empty(0)
     edges, method = choose_edges(combined, bins)
     return HistogramResult(
         edges=edges,
-        correct_counts=np.histogram(correct_values, bins=edges)[0],
-        incorrect_counts=np.histogram(incorrect_values, bins=edges)[0],
-        correct_values=correct_values,
-        incorrect_values=incorrect_values,
+        counts={key: np.histogram(sample, bins=edges)[0] for key, sample in values.items()},
+        values=values,
         method=method,
     )
 
@@ -70,17 +62,11 @@ def choose_edges(values, bins="adaptive"):
 
 def histogram_heights(histogram, mode):
     if mode == "count":
-        return (
-            histogram.correct_counts.astype(np.float64),
-            histogram.incorrect_counts.astype(np.float64),
-        )
+        return {key: counts.astype(np.float64) for key, counts in histogram.counts.items()}
     if mode != "density":
         raise ValueError("histogram mode must be 'count' or 'density'")
     widths = np.diff(histogram.edges)
-    return (
-        _density(histogram.correct_counts, widths),
-        _density(histogram.incorrect_counts, widths),
-    )
+    return {key: _density(counts, widths) for key, counts in histogram.counts.items()}
 
 
 def _density(counts, widths):

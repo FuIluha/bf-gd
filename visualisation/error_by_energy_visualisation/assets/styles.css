@@ -1,4 +1,4 @@
-/* Deliberately simple layout: normal document flow, no fixed or overlapping UI. */
+/* Fixed exploration viewport: navigation and distribution above a scrollable page. */
 
 * {
   box-sizing: border-box;
@@ -19,6 +19,64 @@ input {
 
 .app-shell {
   width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pinned-distribution {
+  flex: 0 0 auto;
+  max-height: calc(100vh - 160px);
+  max-height: calc(100dvh - 160px);
+  overflow-y: auto;
+  background: #ffffff;
+  border-bottom: 1px solid #cccccc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+}
+
+.pinned-chart {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 8px 20px;
+  overflow: hidden;
+}
+
+.scroll-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.step-toolbar {
+  width: 100%;
+  border-bottom: 1px solid #cccccc;
+  background: #ffffff;
+}
+
+.step-toolbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 10px 20px;
+}
+
+.step-toolbar .button {
+  flex: 0 0 auto;
+  min-width: 140px;
+}
+
+.step-toolbar .iteration-badge {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  text-align: center;
 }
 
 .hero,
@@ -103,6 +161,12 @@ h2 {
 .numeric-control {
   display: block;
   margin-bottom: 16px;
+}
+
+.dataset-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .control-label-row {
@@ -223,7 +287,10 @@ h2 {
 
 .chart-card .js-plotly-plot,
 .chart-card .plot-container,
-.chart-card .svg-container {
+.chart-card .svg-container,
+.pinned-chart .js-plotly-plot,
+.pinned-chart .plot-container,
+.pinned-chart .svg-container {
   height: 560px !important;
   min-height: 560px;
   max-width: 100%;
@@ -273,6 +340,21 @@ h2 {
 }
 
 @media (max-width: 600px) {
+  .step-toolbar-inner {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+  }
+
+  .step-toolbar .button {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+  }
+
+  .step-toolbar .iteration-badge {
+    flex: 1 0 100%;
+    order: -1;
+  }
+
   .hero,
   .workspace {
     padding: 12px;

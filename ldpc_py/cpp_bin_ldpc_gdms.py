@@ -170,7 +170,3 @@ class CppBinLdpcGdmsDecoder(BinLdpcDecoderBase):
         if decoder and library:
             library.cpp_gdms_free(decoder)
             self._decoder = None
-
-
-# Backward-compatible class name for downstream code using the legacy API.
-CppBinLdpcSoftGdbfDecoder = CppBinLdpcGdmsDecoder

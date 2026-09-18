@@ -1,4 +1,4 @@
-"""Interactive FTGDBF/PMGDBF decision-energy explorer."""
+"""Interactive LDPC decoder diagnostics explorer."""
 
 
 def create_app(*args, **kwargs):

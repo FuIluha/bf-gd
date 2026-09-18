@@ -4,7 +4,6 @@ import numpy as np
 import plotly.graph_objects as go
 
 from .histogram import histogram_heights
-from .models import Algorithm
 
 
 COLORS = {
@@ -26,50 +25,34 @@ def histogram_figure(
     histogram,
     mode,
     y_scale,
-    value_kind,
-    algorithm,
+    observable,
+    decoder_spec,
     iteration,
 ):
-    correct, incorrect = histogram_heights(histogram, mode)
+    heights = histogram_heights(histogram, mode)
     edges = histogram.edges
     centers = (edges[:-1] + edges[1:]) / 2.0
     widths = np.diff(edges)
-    y_title = "Плотность вероятности" if mode == "density" else "Количество битов"
-    x_title = "E" if value_kind == "energy" else "E − E_threshold"
-    title_value = "энергии" if value_kind == "energy" else "запаса до порога"
+    y_title = "Плотность вероятности" if mode == "density" else "Количество наблюдений"
+    x_title = observable.label
 
     figure = go.Figure()
-    figure.add_bar(
-        x=centers,
-        y=correct,
-        width=widths,
-        name=f"Верное действие ({histogram.correct_values.size:,})",
-        marker_color=COLORS["correct"],
-        opacity=0.68,
-        hovertemplate=(
-            f"{x_title}: %{{x:.5g}}<br>{y_title}: %{{y:.5g}}"
-            "<extra>Верное действие</extra>"
-        ),
-    )
-    figure.add_bar(
-        x=centers,
-        y=incorrect,
-        width=widths,
-        name=f"Ошибочное действие ({histogram.incorrect_values.size:,})",
-        marker_color=COLORS["incorrect"],
-        opacity=0.68,
-        hovertemplate=(
-            f"{x_title}: %{{x:.5g}}<br>{y_title}: %{{y:.5g}}"
-            "<extra>Ошибочное действие</extra>"
-        ),
-    )
-    if value_kind == "margin" or Algorithm(algorithm) is Algorithm.FTGDBF:
+    for category in decoder_spec.categories:
+        if category.key not in heights:
+            continue
+        figure.add_bar(
+            x=centers, y=heights[category.key], width=widths,
+            name=f"{category.label} ({histogram.values[category.key].size:,})",
+            marker_color=category.color, opacity=0.68,
+            hovertemplate=f"{x_title}: %{{x:.5g}}<br>{y_title}: %{{y:.5g}}<extra>{category.label}</extra>",
+        )
+    if observable.zero_line:
         figure.add_vline(
             x=0.0,
             line_dash="dash",
-            line_color="#f8fafc",
+            line_color="#64748b",
             opacity=0.8,
-            annotation_text="порог",
+            annotation_text="0",
             annotation_position="top right",
         )
     figure.update_layout(
@@ -77,7 +60,7 @@ def histogram_figure(
         autosize=True,
         title={
             "text": (
-                f"Распределение {title_value}: решение {iteration} → {iteration + 1}"
+                f"{decoder_spec.title}: {x_title} · решение {iteration} → {iteration + 1}"
                 f"<br><sup>{histogram.method}</sup>"
             ),
             "x": 0.01,
@@ -94,13 +77,13 @@ def histogram_figure(
     return _theme(figure)
 
 
-def performance_figure(view, y_scale="log"):
+def performance_figure(view):
     iterations = np.arange(len(view.snapshots))
     ber = np.asarray([item.metrics.ber for item in view.snapshots])
     fer = np.asarray([item.metrics.fer for item in view.snapshots])
     figure = go.Figure()
-    _add_metric_trace(figure, iterations, ber, "BER", COLORS["ber"], y_scale)
-    _add_metric_trace(figure, iterations, fer, "FER", COLORS["fer"], y_scale)
+    _add_metric_trace(figure, iterations, ber, "BER", COLORS["ber"])
+    _add_metric_trace(figure, iterations, fer, "FER", COLORS["fer"])
 
     if view.comparison is not None:
         label = f"{view.comparison.algorithm} · {view.comparison.name}"
@@ -110,7 +93,6 @@ def performance_figure(view, y_scale="log"):
             view.comparison.ber,
             f"BER · {label}",
             COLORS["comparison_ber"],
-            y_scale,
             dash="dot",
         )
         _add_metric_trace(
@@ -119,7 +101,6 @@ def performance_figure(view, y_scale="log"):
             view.comparison.fer,
             f"FER · {label}",
             COLORS["comparison_fer"],
-            y_scale,
             dash="dot",
         )
     figure.add_vline(
@@ -135,7 +116,7 @@ def performance_figure(view, y_scale="log"):
         title={"text": "BER и FER по истории", "x": 0.01},
         xaxis_title="Номер итерации",
         yaxis_title="Доля ошибок",
-        yaxis_type=y_scale,
+        yaxis_type="log",
         legend={"orientation": "v", "y": 1, "x": 1, "xanchor": "right"},
         hovermode="x unified",
         margin={"l": 64, "r": 24, "t": 60, "b": 60},
@@ -160,10 +141,9 @@ def empty_figure(message):
     return _theme(figure)
 
 
-def _add_metric_trace(figure, x, y, name, color, y_scale, dash="solid"):
+def _add_metric_trace(figure, x, y, name, color, dash="solid"):
     shown = np.asarray(y, dtype=np.float64)
-    if y_scale == "log":
-        shown = np.where(shown > 0, shown, np.nan)
+    shown = np.where(shown > 0, shown, np.nan)
     figure.add_scatter(
         x=x,
         y=shown,
