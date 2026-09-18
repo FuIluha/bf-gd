@@ -18,10 +18,10 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_mgdms.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_mgdms.txt"
 
-DEFAULT_LEARNING_RATES = (0.75)
-DEFAULT_LEARNING_RATE_DECAYS = (0.03)
-DEFAULT_ALPHAS = (2.0)
-DEFAULT_L2 = (1.2)
+DEFAULT_LEARNING_RATES = (0.75,)
+DEFAULT_LEARNING_RATE_DECAYS = (0.03,)
+DEFAULT_ALPHAS = (2.0,)
+DEFAULT_L2 = (1.2,)
 DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.95 + 1e-9, 0.05), 6))
 
 _BASE_EXPERIMENT = None
@@ -63,7 +63,7 @@ def parse_args():
         help="Enumerate learning_rate, learning_rate_decay, alpha, l2 and momentum together. By default only momentum is swept while the other settings stay fixed from the JSON.",
     )
     parser.add_argument(
-        "--fixed-momentum",
+        "--momentum-only",
         dest="full_grid",
         action="store_false",
         default=False,
