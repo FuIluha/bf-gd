@@ -18,16 +18,11 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_mgdms.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_mgdms.txt"
 
-# Requested search grid for MGDMS.
-# Momentum is swept in 0.05 increments up to 0.95, alpha is swept in
-# coarse steps from 0.5 to 3.0, while learning rate and L2 remain fixed
-# unless explicitly overridden by CLI arguments.
-
-DEFAULT_LEARNING_RATES = tuple(np.round(np.arange(0.05, 1.0 + 1e-9, 0.05), 6))
-DEFAULT_LEARNING_RATE_DECAYS = (0.001, 0.01, 0.03, 0.05, 0.1)
-DEFAULT_ALPHAS = tuple(np.round(np.arange(0.2, 2.9 + 1e-9, 0.3), 6))
-DEFAULT_L2 = (0.0, 0.1, 0.3, 0.7, 1.0, 1.2, 1.5)
-DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.96 + 1e-9, 0.08), 6))
+DEFAULT_LEARNING_RATES = tuple(np.round(np.arange(0.04, 1.0 + 1e-9, 0.04), 6))
+DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.03, 0.05, 0.1)
+DEFAULT_ALPHAS = tuple(np.round(np.arange(0.25, 3.0 + 1e-9, 0.25), 6))
+DEFAULT_L2 = (0.0, 0.5, 1.0, 1.2)
+DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.95 + 1e-9, 0.05), 6)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
