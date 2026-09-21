@@ -22,7 +22,7 @@ DEFAULT_LEARNING_RATES = tuple(np.round(np.arange(0.04, 1.0 + 1e-9, 0.04), 6))
 DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.03, 0.05, 0.1)
 DEFAULT_ALPHAS = tuple(np.round(np.arange(0.25, 3.0 + 1e-9, 0.25), 6))
 DEFAULT_L2 = (0.0, 0.5, 1.0, 1.2)
-DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.95 + 1e-9, 0.05), 6)
+DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.95 + 1e-9, 0.05), 6))
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
