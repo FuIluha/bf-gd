@@ -13,6 +13,7 @@ SUPPORTED_DECODERS = (
     "ldpc_py.bin_ldpc_ftgdbf:BinLdpcFtgdbfDecoder",
     "ldpc_py.bin_ldpc_pmgdbf:BinLdpcPmgdbfDecoder",
     "ldpc_py.bin_ldpc_gdms:BinLdpcGdmsDecoder",
+    "ldpc_py.bin_ldpc_tgdbf:BinLdpcTgdbfDecoder",
 )
 
 
