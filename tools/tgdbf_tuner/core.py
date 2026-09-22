@@ -1,4 +1,4 @@
-"""Synchronous, process-parallel threshold selection for TGDBF."""
+"""Synchronous, process-parallel TGDBF threshold tuning and observation."""
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,8 +21,9 @@ MAX_BINS = 10_000
 class TuningConfig:
     code: Path
     snr_db: float
-    ratio: float
-    bin_width: float
+    ratio: float | None = None
+    bin_width: float | None = None
+    fixed_delta: float | None = None
     train_frames: int = 10_000
     eval_frames: int = 10_000
     seed: int = 42
@@ -36,10 +37,15 @@ class TuningConfig:
     def validate(self):
         if not np.isfinite(self.snr_db):
             raise ValueError("SNR must be finite")
-        if not np.isfinite(self.ratio) or self.ratio <= 0:
-            raise ValueError("ratio N must be positive and finite")
-        if not np.isfinite(self.bin_width) or self.bin_width <= 0:
-            raise ValueError("bin width must be positive and finite")
+        if (self.ratio is None) == (self.fixed_delta is None):
+            raise ValueError("specify exactly one of ratio or fixed_delta")
+        if self.fixed_delta is None:
+            if not np.isfinite(self.ratio) or self.ratio <= 0:
+                raise ValueError("ratio N must be positive and finite")
+            if self.bin_width is None or not np.isfinite(self.bin_width) or self.bin_width <= 0:
+                raise ValueError("bin width must be positive and finite")
+        elif not np.isfinite(self.fixed_delta) or self.fixed_delta < 0:
+            raise ValueError("fixed delta must be finite and non-negative")
         if min(self.train_frames, self.eval_frames, self.workers, self.iterations, self.L) <= 0:
             raise ValueError("frame counts, workers, iterations and L must be positive")
         if not np.isfinite(self.alpha) or self.alpha < 0:
@@ -50,7 +56,9 @@ class TuningConfig:
     def metadata(self):
         return {
             "code": str(self.code), "snr_db": self.snr_db,
+            "mode": "fixed" if self.fixed_delta is not None else "ratio",
             "ratio": self.ratio, "bin_width": self.bin_width,
+            "fixed_delta": self.fixed_delta,
             "train_frames": self.train_frames, "eval_frames": self.eval_frames,
             "seed": self.seed, "workers": self.workers,
             "iterations": self.iterations, "alpha": self.alpha,
@@ -150,14 +158,22 @@ def _probe(decoder, states, active, received, parameters, iteration, width):
 
 
 def _advance(decoder, states, active, received, parameters, iteration):
+    correct_flips = 0
+    incorrect_flips = 0
     for index in np.flatnonzero(active):
-        states[index] = decoder.step_state(
+        before = decoder.hard_decision(states[index])
+        result = decoder.step_state(
             states[index], received[index], parameters, iteration, None,
-        ).fields
+        )
+        flips = result.diagnostics["flip"]
+        correct_flips += int(np.count_nonzero(flips & (before < 0)))
+        incorrect_flips += int(np.count_nonzero(flips & (before > 0)))
+        states[index] = result.fields
         active[index] = not decoder.is_decoded(states[index])
     errors = _metrics(decoder, states)
     return {"bit_errors": errors[0], "frame_errors": errors[1],
-            "active_frames": int(active.sum())}
+            "active_frames": int(active.sum()),
+            "correct_flips": correct_flips, "incorrect_flips": incorrect_flips}
 
 
 def _worker(connection, pcm, train_received, eval_received, parameters, width):
@@ -223,6 +239,27 @@ def _sum_metrics(results, cohort, frame_count, block_length):
     }
 
 
+def _sum_flips(results, cohort):
+    correct = sum(item[cohort]["correct_flips"] for item in results)
+    incorrect = sum(item[cohort]["incorrect_flips"] for item in results)
+    if incorrect:
+        ratio, ratio_kind = correct / incorrect, "finite"
+    elif correct:
+        ratio, ratio_kind = None, "infinite"
+    else:
+        ratio, ratio_kind = None, "undefined"
+    return {"correct": correct, "incorrect": incorrect,
+            "ratio": ratio, "ratio_kind": ratio_kind}
+
+
+def _format_ratio(flips):
+    if flips["ratio_kind"] == "infinite":
+        return "inf"
+    if flips["ratio_kind"] == "undefined":
+        return "undefined"
+    return f"{flips['ratio']:.6g}"
+
+
 def _sum_bins(probes):
     size = max((max(len(good), len(bad)) for good, bad, _ in probes), default=0)
     good = np.zeros(size, dtype=np.int64)
@@ -262,7 +299,7 @@ def run(config, state):
                            config.snr_db, config.seed, 0x54524149)
     evaluation = _make_received(config.eval_frames, graph.block_length,
                                 config.snr_db, config.seed, 0x4556414C)
-    parameters = {"delta": [0.0, 0.0], "alpha": config.alpha,
+    parameters = {"delta": [0.0, config.fixed_delta or 0.0], "alpha": config.alpha,
                   "rho": list(config.rho), "L": config.L}
     BinLdpcTgdbfDecoder.validate_parameters(parameters)
     parts = min(config.workers, config.train_frames, config.eval_frames)
@@ -301,37 +338,61 @@ def run(config, state):
             state.append(record)
             state.update(message="Итерация 0: начальные BER/FER", output=str(output))
             for iteration in range(config.iterations):
-                probes = _request(connections, "probe", iteration)
-                good, bad, active_train = _sum_bins(probes)
-                if active_train == 0:
-                    reason = "На обучающей выборке все слова уже удовлетворяют проверкам"
-                    break
-                selected = _choose_delta(good, bad, config.ratio, config.bin_width)
-                if selected is None:
-                    reason = "Нет подходящего бина от нуля: нечего флипать"
-                    _write_record(handle, {"type": "probe", "iteration": iteration,
-                                           "bin_correct": good.tolist(),
-                                           "bin_incorrect": bad.tolist(),
-                                           "reason": reason})
-                    break
-                parts_result = _request(connections, "step", (iteration, selected["delta"]))
-                record = {
-                    "type": "iteration", "iteration": iteration + 1,
-                    "delta": [0.0, selected["delta"]],
-                    "last_bin": selected["last_bin"],
-                    "correct_flips_train": selected["correct_flips"],
-                    "incorrect_flips_train": selected["incorrect_flips"],
-                    "bin_correct": good.tolist(),
-                    "bin_incorrect": bad.tolist(),
-                    "active_train_before": active_train,
-                    "parameters": {**parameters, "delta": [0.0, selected["delta"]]},
-                    "train": _sum_metrics(parts_result, "train", config.train_frames, graph.block_length),
-                    "eval": _sum_metrics(parts_result, "eval", config.eval_frames, graph.block_length),
-                }
+                if config.fixed_delta is not None:
+                    last = state.snapshot()["records"][-1]
+                    if not (last["train"]["active_frames"] or last["eval"]["active_frames"]):
+                        reason = "Все слова удовлетворяют проверкам"
+                        break
+                    delta = config.fixed_delta
+                    parts_result = _request(connections, "step", (iteration, delta))
+                    flips_train = _sum_flips(parts_result, "train")
+                    flips_eval = _sum_flips(parts_result, "eval")
+                    record = {
+                        "type": "iteration", "iteration": iteration + 1,
+                        "delta": [0.0, delta],
+                        "flips_train": flips_train, "flips_eval": flips_eval,
+                        "correct_flips_train": flips_train["correct"],
+                        "incorrect_flips_train": flips_train["incorrect"],
+                        "parameters": parameters,
+                        "train": _sum_metrics(parts_result, "train", config.train_frames, graph.block_length),
+                        "eval": _sum_metrics(parts_result, "eval", config.eval_frames, graph.block_length),
+                    }
+                else:
+                    probes = _request(connections, "probe", iteration)
+                    good, bad, active_train = _sum_bins(probes)
+                    if active_train == 0:
+                        reason = "На обучающей выборке все слова уже удовлетворяют проверкам"
+                        break
+                    selected = _choose_delta(good, bad, config.ratio, config.bin_width)
+                    if selected is None:
+                        reason = "Нет подходящего бина от нуля: нечего флипать"
+                        _write_record(handle, {"type": "probe", "iteration": iteration,
+                                               "bin_correct": good.tolist(),
+                                               "bin_incorrect": bad.tolist(),
+                                               "reason": reason})
+                        break
+                    delta = selected["delta"]
+                    parts_result = _request(connections, "step", (iteration, delta))
+                    record = {
+                        "type": "iteration", "iteration": iteration + 1,
+                        "delta": [0.0, delta],
+                        "last_bin": selected["last_bin"],
+                        "correct_flips_train": selected["correct_flips"],
+                        "incorrect_flips_train": selected["incorrect_flips"],
+                        "bin_correct": good.tolist(),
+                        "bin_incorrect": bad.tolist(),
+                        "active_train_before": active_train,
+                        "parameters": {**parameters, "delta": [0.0, delta]},
+                        "train": _sum_metrics(parts_result, "train", config.train_frames, graph.block_length),
+                        "eval": _sum_metrics(parts_result, "eval", config.eval_frames, graph.block_length),
+                    }
                 _write_record(handle, record)
                 state.append(record)
-                state.update(message=f"Итерация {iteration + 1}: delta={selected['delta']:.6g}")
-                print(f"iteration={iteration + 1} delta={selected['delta']:.6g} "
+                state.update(message=f"Итерация {iteration + 1}: delta={delta:.6g}")
+                ratio_text = ""
+                if config.fixed_delta is not None:
+                    ratio_text = f" N={_format_ratio(record['flips_train'])}"
+                print(f"iteration={iteration + 1} delta={delta:.6g}{ratio_text} "
                       f"BER={record['eval']['ber']:.6g} FER={record['eval']['fer']:.6g}", flush=True)
             else:
                 reason = f"Достигнут предел {config.iterations} итераций"

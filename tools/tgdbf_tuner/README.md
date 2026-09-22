@@ -38,3 +38,26 @@ JSONL-лог создаётся в `logs/` и не перезаписывает 
 Параметры `--train-frames`, `--eval-frames`, `--seed`, `--alpha`, `--rho`,
 `--L`, `--iterations`, `--code` и `--output` можно задать перед запуском.
 Нулевая итерация и остановка тоже записываются в лог.
+
+## Наблюдение N при фиксированном пороге
+
+Тот же runner поддерживает `--fixed-delta` вместо `--ratio` и `--bin-width`.
+Он не подбирает порог: на каждом шаге использует `delta=[0, fixed_delta]` и
+считает отношение `N = correct / incorrect` по *фактически перевёрнутым*
+битам активных слов. Правильный flip исправляет ошибочный бит нулевого
+кодового слова; неправильный портит правильный. JSONL содержит счётчики и
+`N` отдельно для обучающей и проверочной выборок, а также BER/FER. Если
+неправильных flip нет, но правильные есть, `ratio_kind` равен `infinite`,
+а `ratio` записывается как `null`; если нет никаких flip, это `undefined`.
+
+Пример с параметрами из `experiments/experiment_pmgdbf.json`, но без
+вероятности `p` (детерминированный TGDBF):
+
+```bash
+srun --job-name=tgdbf-fixed --time=24:00:00 --cpus-per-task=128 \
+  --chdir=/home/i.chevtaev/bf-gd --pty \
+  /home/i.chevtaev/bf-gd/.venv/bin/python -u -m tools.tgdbf_tuner \
+  --snr 0.0 --fixed-delta 1 --workers 128 --iterations 300 \
+  --alpha 1.8 --rho 2,2,2,2,2,1,1 --L 7 \
+  --host 0.0.0.0 --port 8051
+```

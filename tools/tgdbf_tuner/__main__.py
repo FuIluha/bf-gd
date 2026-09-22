@@ -29,8 +29,10 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--code", type=Path, default=DEFAULT_CODE)
     parser.add_argument("--snr", type=float, required=True, help="SNR in dB")
-    parser.add_argument("--ratio", type=float, required=True, help="minimum correct/incorrect count N")
-    parser.add_argument("--bin-width", type=float, required=True, help="fixed width in E-Emin units")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--ratio", type=float, help="minimum correct/incorrect count N for threshold tuning")
+    mode.add_argument("--fixed-delta", type=float, help="fixed upper threshold; observe actual flip ratio N")
+    parser.add_argument("--bin-width", type=float, help="fixed width in E-Emin units for threshold tuning")
     parser.add_argument("--train-frames", type=int, default=10_000)
     parser.add_argument("--eval-frames", type=int, default=10_000)
     parser.add_argument("--seed", type=int, default=42)
@@ -51,7 +53,8 @@ def main(argv=None):
     output = args.output or PROJECT_ROOT / "logs" / f"tgdbf_tune_{stamp}.jsonl"
     config = TuningConfig(
         code=args.code, snr_db=args.snr, ratio=args.ratio,
-        bin_width=args.bin_width, train_frames=args.train_frames,
+        bin_width=args.bin_width, fixed_delta=args.fixed_delta,
+        train_frames=args.train_frames,
         eval_frames=args.eval_frames, seed=args.seed, workers=args.workers,
         iterations=args.iterations, alpha=args.alpha, rho=args.rho,
         L=args.L, output=output,
