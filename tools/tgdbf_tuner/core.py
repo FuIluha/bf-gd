@@ -21,7 +21,6 @@ MAX_BINS = 10_000
 class TuningConfig:
     code: Path
     snr_db: float
-    ratio: float
     bin_width: float
     train_frames: int = 10_000
     eval_frames: int = 10_000
@@ -36,8 +35,6 @@ class TuningConfig:
     def validate(self):
         if not np.isfinite(self.snr_db):
             raise ValueError("SNR must be finite")
-        if not np.isfinite(self.ratio) or self.ratio <= 0:
-            raise ValueError("ratio N must be positive and finite")
         if not np.isfinite(self.bin_width) or self.bin_width <= 0:
             raise ValueError("bin width must be positive and finite")
         if min(self.train_frames, self.eval_frames, self.workers, self.iterations, self.L) <= 0:
@@ -50,7 +47,8 @@ class TuningConfig:
     def metadata(self):
         return {
             "code": str(self.code), "snr_db": self.snr_db,
-            "ratio": self.ratio, "bin_width": self.bin_width,
+            "objective": "minimize training FER, then BER",
+            "bin_width": self.bin_width,
             "train_frames": self.train_frames, "eval_frames": self.eval_frames,
             "seed": self.seed, "workers": self.workers,
             "iterations": self.iterations, "alpha": self.alpha,
@@ -125,7 +123,9 @@ def _probe(decoder, states, active, received, parameters, iteration, width):
     probe_params = {**parameters, "delta": [0.0, 0.0]}
     correct = np.zeros(0, dtype=np.int64)
     incorrect = np.zeros(0, dtype=np.int64)
+    frame_events = np.zeros(0, dtype=np.int64)
     active_count = 0
+    base_bit_errors, base_frame_errors = _metrics(decoder, states)
     for index in np.flatnonzero(active):
         # Only diagnostics are used: delta=[0,0] would flip minima in the
         # returned state, so that state must never become the current state.
@@ -136,17 +136,36 @@ def _probe(decoder, states, active, received, parameters, iteration, width):
         scaled = relative / width
         if not np.all(np.isfinite(scaled)) or np.any(scaled >= MAX_BINS):
             raise ValueError(f"More than {MAX_BINS} bins needed; increase --bin-width")
-        bins = np.floor(scaled).astype(np.int64)
+        # Assign each bit to the first candidate whose actual inclusive
+        # threshold flips it; this also handles exact bin-edge values.
+        cut_count = min(MAX_BINS, int(np.max(scaled)) + 2)
+        cutoffs = np.nextafter(width * np.arange(1, cut_count + 1), -np.inf)
+        bins = np.searchsorted(cutoffs, relative, side="left")
+        if np.any(bins >= MAX_BINS):
+            raise ValueError(f"More than {MAX_BINS} bins needed; increase --bin-width")
         correct_bits = decoder.hard_decision(states[index]) < 0
         good = np.bincount(bins[correct_bits]).astype(np.int64)
         bad = np.bincount(bins[~correct_bits]).astype(np.int64)
         size = max(len(correct), len(incorrect), len(good), len(bad))
         correct = np.pad(correct, (0, size - len(correct)))
         incorrect = np.pad(incorrect, (0, size - len(incorrect)))
+        frame_events = np.pad(frame_events, (0, size - len(frame_events)))
         correct[:len(good)] += good
         incorrect[:len(bad)] += bad
+        after_errors = int(correct_bits.sum()) + np.cumsum(
+            np.pad(bad, (0, size - len(bad)))
+            - np.pad(good, (0, size - len(good)))
+        )
+        frame_error_delta = (after_errors > 0).astype(np.int64) - int(correct_bits.any())
+        frame_events[:size] += np.diff(np.r_[0, frame_error_delta])
         active_count += 1
-    return correct, incorrect, active_count
+    return {
+        "correct": correct, "incorrect": incorrect,
+        "frame_events": frame_events,
+        "base_bit_errors": base_bit_errors,
+        "base_frame_errors": base_frame_errors,
+        "active_frames": active_count,
+    }
 
 
 def _advance(decoder, states, active, received, parameters, iteration):
@@ -223,30 +242,55 @@ def _sum_metrics(results, cohort, frame_count, block_length):
     }
 
 
-def _sum_bins(probes):
-    size = max((max(len(good), len(bad)) for good, bad, _ in probes), default=0)
-    good = np.zeros(size, dtype=np.int64)
-    bad = np.zeros(size, dtype=np.int64)
-    for local_good, local_bad, _ in probes:
-        good[:len(local_good)] += local_good
-        bad[:len(local_bad)] += local_bad
-    return good, bad, sum(item[2] for item in probes)
+def _sum_probes(probes):
+    size = max((len(item["correct"]) for item in probes), default=0)
+    correct = np.zeros(size, dtype=np.int64)
+    incorrect = np.zeros(size, dtype=np.int64)
+    frame_events = np.zeros(size, dtype=np.int64)
+    for item in probes:
+        for key, target in (("correct", correct), ("incorrect", incorrect),
+                            ("frame_events", frame_events)):
+            values = item[key]
+            target[:len(values)] += values
+    return {
+        "correct": correct, "incorrect": incorrect,
+        "frame_events": frame_events,
+        "base_bit_errors": sum(item["base_bit_errors"] for item in probes),
+        "base_frame_errors": sum(item["base_frame_errors"] for item in probes),
+        "active_frames": sum(item["active_frames"] for item in probes),
+    }
 
 
-def _choose_delta(good, bad, ratio, width):
-    """Largest qualifying prefix of bins, starting with E-Emin=0."""
-    last = -1
-    for index, (correct, incorrect) in enumerate(zip(good, bad)):
-        if correct == 0 or (incorrect > 0 and correct < ratio * incorrect):
-            break
-        last = index
-    if last < 0:
-        return None
-    # Exclude values exactly on the next bin's left edge when possible.
-    delta = float(np.nextafter((last + 1) * width, -np.inf))
-    return {"delta": delta, "last_bin": last,
-            "correct_flips": int(good[:last + 1].sum()),
-            "incorrect_flips": int(bad[:last + 1].sum())}
+def _choose_delta(probe, width):
+    """Lexicographically minimize training frame errors, then bit errors.
+
+    Every candidate includes bin zero and flips at least one bit. The smallest
+    delta wins exact ties. Candidate k flips all bits in bins 0..k.
+    """
+    correct = probe["correct"]
+    incorrect = probe["incorrect"]
+    base_frame_errors = probe["base_frame_errors"]
+    base_bit_errors = probe["base_bit_errors"]
+    frame_errors = base_frame_errors + np.cumsum(probe["frame_events"])
+    bit_errors = base_bit_errors + np.cumsum(incorrect - correct)
+    if len(correct) == 0:
+        raise ValueError("No active energy bins to search")
+    best_key = None
+    best_bin = 0
+    for index, (frames, bits) in enumerate(zip(frame_errors, bit_errors)):
+        key = (int(frames), int(bits), index)
+        if best_key is None or key < best_key:
+            best_key, best_bin = key, index
+    # Exclude the next bin's left edge from the selected interval.
+    delta = float(np.nextafter((best_bin + 1) * width, -np.inf))
+    return {
+        "delta": delta, "last_bin": best_bin,
+        "correct_flips": int(correct[:best_bin + 1].sum()),
+        "incorrect_flips": int(incorrect[:best_bin + 1].sum()),
+        "predicted_frame_errors": int(frame_errors[best_bin]),
+        "predicted_bit_errors": int(bit_errors[best_bin]),
+        "candidate_count": len(correct),
+    }
 
 
 def _write_record(handle, record):
@@ -301,37 +345,37 @@ def run(config, state):
             state.append(record)
             state.update(message="Итерация 0: начальные BER/FER", output=str(output))
             for iteration in range(config.iterations):
-                probes = _request(connections, "probe", iteration)
-                good, bad, active_train = _sum_bins(probes)
-                if active_train == 0:
+                probe = _sum_probes(_request(connections, "probe", iteration))
+                if probe["active_frames"] == 0:
                     reason = "На обучающей выборке все слова уже удовлетворяют проверкам"
                     break
-                selected = _choose_delta(good, bad, config.ratio, config.bin_width)
-                if selected is None:
-                    reason = "Нет подходящего бина от нуля: нечего флипать"
-                    _write_record(handle, {"type": "probe", "iteration": iteration,
-                                           "bin_correct": good.tolist(),
-                                           "bin_incorrect": bad.tolist(),
-                                           "reason": reason})
-                    break
+                selected = _choose_delta(probe, config.bin_width)
                 parts_result = _request(connections, "step", (iteration, selected["delta"]))
+                train_metrics = _sum_metrics(parts_result, "train", config.train_frames,
+                                             graph.block_length)
+                if (train_metrics["frame_errors"] != selected["predicted_frame_errors"]
+                        or train_metrics["bit_errors"] != selected["predicted_bit_errors"]):
+                    raise RuntimeError("Predicted training BER/FER differs from applied TGDBF step")
+                bounds = [0.0, selected["delta"]]
                 record = {
                     "type": "iteration", "iteration": iteration + 1,
-                    "delta": [0.0, selected["delta"]],
+                    "delta": bounds,
                     "last_bin": selected["last_bin"],
                     "correct_flips_train": selected["correct_flips"],
                     "incorrect_flips_train": selected["incorrect_flips"],
-                    "bin_correct": good.tolist(),
-                    "bin_incorrect": bad.tolist(),
-                    "active_train_before": active_train,
-                    "parameters": {**parameters, "delta": [0.0, selected["delta"]]},
-                    "train": _sum_metrics(parts_result, "train", config.train_frames, graph.block_length),
+                    "candidate_count": selected["candidate_count"],
+                    "bin_correct": probe["correct"].tolist(),
+                    "bin_incorrect": probe["incorrect"].tolist(),
+                    "active_train_before": probe["active_frames"],
+                    "parameters": {**parameters, "delta": bounds},
+                    "train": train_metrics,
                     "eval": _sum_metrics(parts_result, "eval", config.eval_frames, graph.block_length),
                 }
                 _write_record(handle, record)
                 state.append(record)
-                state.update(message=f"Итерация {iteration + 1}: delta={selected['delta']:.6g}")
-                print(f"iteration={iteration + 1} delta={selected['delta']:.6g} "
+                choice = f"delta={selected['delta']:.6g}"
+                state.update(message=f"Итерация {iteration + 1}: {choice}")
+                print(f"iteration={iteration + 1} {choice} "
                       f"BER={record['eval']['ber']:.6g} FER={record['eval']['fer']:.6g}", flush=True)
             else:
                 reason = f"Достигнут предел {config.iterations} итераций"

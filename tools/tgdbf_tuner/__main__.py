@@ -29,8 +29,8 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--code", type=Path, default=DEFAULT_CODE)
     parser.add_argument("--snr", type=float, required=True, help="SNR in dB")
-    parser.add_argument("--ratio", type=float, required=True, help="minimum correct/incorrect count N")
-    parser.add_argument("--bin-width", type=float, required=True, help="fixed width in E-Emin units")
+    parser.add_argument("--bin-width", type=float, required=True,
+                        help="candidate threshold grid spacing in E-Emin units")
     parser.add_argument("--train-frames", type=int, default=10_000)
     parser.add_argument("--eval-frames", type=int, default=10_000)
     parser.add_argument("--seed", type=int, default=42)
@@ -50,7 +50,7 @@ def main(argv=None):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     output = args.output or PROJECT_ROOT / "logs" / f"tgdbf_tune_{stamp}.jsonl"
     config = TuningConfig(
-        code=args.code, snr_db=args.snr, ratio=args.ratio,
+        code=args.code, snr_db=args.snr,
         bin_width=args.bin_width, train_frames=args.train_frames,
         eval_frames=args.eval_frames, seed=args.seed, workers=args.workers,
         iterations=args.iterations, alpha=args.alpha, rho=args.rho,

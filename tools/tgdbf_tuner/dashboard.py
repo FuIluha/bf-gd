@@ -7,14 +7,16 @@ import plotly.graph_objects as go
 
 def _metric_figure(records, key, color, title):
     iterations = [record["iteration"] for record in records]
-    values = np.asarray([record["eval"][key] for record in records], dtype=float)
     figure = go.Figure()
-    figure.add_scatter(
-        x=iterations, y=np.where(values > 0, values, np.nan),
-        mode="lines+markers", name=key.upper(), line_color=color,
-        customdata=values,
-        hovertemplate="Итерация %{x}<br>Значение %{customdata:.6g}<extra></extra>",
-    )
+    for cohort, name, dash in (("train", "Подбор", "dash"),
+                               ("eval", "Проверка", "solid")):
+        values = np.asarray([record[cohort][key] for record in records], dtype=float)
+        figure.add_scatter(
+            x=iterations, y=np.where(values > 0, values, np.nan),
+            mode="lines+markers", name=name,
+            line={"color": color, "dash": dash}, customdata=values,
+            hovertemplate=f"{name} · итерация %{{x}}<br>Значение %{{customdata:.6g}}<extra></extra>",
+        )
     figure.update_layout(
         title=title, height=390, xaxis_title="Номер итерации",
         yaxis_title=key.upper(), yaxis_type="log",
@@ -27,8 +29,7 @@ def create_app(state):
     app = Dash(__name__, title="TGDBF — подбор delta")
     metadata = state.snapshot()["metadata"]
     details = (
-        f"SNR={metadata['snr_db']:g} дБ · N={metadata['ratio']:g} · "
-        f"бин={metadata['bin_width']:g} · "
+        f"SNR={metadata['snr_db']:g} дБ · шаг порога={metadata['bin_width']:g} · "
         f"подбор={metadata['train_frames']} слов · "
         f"оценка={metadata['eval_frames']} слов · "
         f"процессов={metadata['workers']}"
@@ -65,18 +66,20 @@ def create_app(state):
         )
         rows = [
             html.Tr([html.Th("Итерация"), html.Th("delta"),
-                     html.Th("Правильные flip"), html.Th("Неправильные flip"),
-                     html.Th("BER"), html.Th("FER")]),
+                     html.Th("Порогов"), html.Th("FER подбор"),
+                     html.Th("BER подбор"), html.Th("FER проверка"),
+                     html.Th("BER проверка")]),
         ]
         for record in reversed(records[-12:]):
             bounds = record.get("delta")
             rows.append(html.Tr([
                 html.Td(record["iteration"]),
                 html.Td("—" if bounds is None else f"[0, {bounds[1]:.6g}]"),
-                html.Td(record.get("correct_flips_train", "—")),
-                html.Td(record.get("incorrect_flips_train", "—")),
-                html.Td(f"{record['eval']['ber']:.6g}"),
+                html.Td(record.get("candidate_count", "—")),
+                html.Td(f"{record['train']['fer']:.6g}"),
+                html.Td(f"{record['train']['ber']:.6g}"),
                 html.Td(f"{record['eval']['fer']:.6g}"),
+                html.Td(f"{record['eval']['ber']:.6g}"),
             ]))
         table = html.Table(rows, style={"width": "100%", "textAlign": "left"})
         return (
