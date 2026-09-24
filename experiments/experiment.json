@@ -5,7 +5,7 @@
     "codec": {
       "type": "BinaryLdpcSoftCodec",
       "src_dir": "codes",
-      "code": "ldpc_5g_k120_n600.json",
+      "code": "ldpc_savin_4_8_12_24_Zc54.json",
       "algorithm": "h_layered_min_sum",
       "n_iterations": 50,
       "llr_scale": 0.75,
