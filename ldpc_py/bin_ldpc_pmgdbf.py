@@ -2,7 +2,7 @@ import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
 from visualisation.error_by_energy_visualisation.base import VisualizableDecoderBase, masked_samples
 from visualisation.error_by_energy_visualisation.models import (
-    CategorySpec, DecoderSpec, ObservableSpec, ParameterSpec, StepResult,
+    CategoryGroupSpec, CategorySpec, DecoderSpec, ObservableSpec, ParameterSpec, StepResult,
 )
 
 MAX_AGE = np.iinfo(np.int32).max
@@ -18,7 +18,11 @@ class BinLdpcPmgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
         self.L = kwargs["L"]
 
-        if len(rho) != self.L:
+        if self.L < 0:
+            raise ValueError("L must be non-negative")
+        if self.L == 0:
+            rho = np.empty(0, dtype=np.float32)
+        elif len(rho) != self.L:
             raise ValueError("Momentum length must be equal to L")
 
         self.rho = np.concatenate((
@@ -57,7 +61,7 @@ class BinLdpcPmgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
                 ParameterSpec("alpha", "alpha", "float", 1.8, 0.0, 4.0, 0.01),
                 ParameterSpec("p", "p", "float", 0.9, 0.0, 1.0, 0.01),
                 ParameterSpec("rho", "rho (через запятую)", "float_list", [2, 2, 2, 2, 2, 1, 1]),
-                ParameterSpec("L", "L", "int", 7, 1, 32, 1),
+                ParameterSpec("L", "L (0 отключает momentum)", "int", 7, 0, 32, 1),
             ),
             observables=(
                 ObservableSpec("energy", "Энергия E"),
@@ -67,12 +71,15 @@ class BinLdpcPmgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
                 CategorySpec("correct", "Верное действие", "#2e7d32"),
                 CategorySpec("incorrect", "Ошибочное действие", "#c62828"),
             ),
+            category_groups=(
+                CategoryGroupSpec("action", "По качеству действия", ("correct", "incorrect")),
+            ),
         )
 
     @classmethod
     def validate_parameters(cls, parameters):
         parsed = super().validate_parameters(parameters)
-        if len(parsed["rho"]) != parsed["L"]:
+        if parsed["L"] > 0 and len(parsed["rho"]) != parsed["L"]:
             raise ValueError("Длина rho должна совпадать с L")
         return parsed
 
@@ -87,9 +94,10 @@ class BinLdpcPmgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
             np.minimum(state["ages"], parameters["L"]) + 1,
         ).astype(np.int32)
         momentum = np.zeros(x.shape, dtype=np.float32)
-        within = ages <= parameters["L"]
-        rho = np.asarray(parameters["rho"], dtype=np.float32)
-        momentum[within] = rho[ages[within] - 1]
+        if parameters["L"] > 0:
+            within = ages <= parameters["L"]
+            rho = np.asarray(parameters["rho"], dtype=np.float32)
+            momentum[within] = rho[ages[within] - 1]
         checks = self.bpsk_syndrome(x)
         incident = np.bincount(
             self.edge_vn, weights=checks[self.edge_cn], minlength=self.block_length,

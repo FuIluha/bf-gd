@@ -2,7 +2,7 @@ import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
 from visualisation.error_by_energy_visualisation.base import VisualizableDecoderBase, masked_samples
 from visualisation.error_by_energy_visualisation.models import (
-    CategorySpec, DecoderSpec, ObservableSpec, ParameterSpec, StepResult,
+    CategoryGroupSpec, CategorySpec, DecoderSpec, ObservableSpec, ParameterSpec, StepResult,
 )
 
 MAX_AGE = np.iinfo(np.int32).max
@@ -17,7 +17,11 @@ class BinLdpcTgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
         self.L = kwargs["L"]
 
-        if len(rho) != self.L:
+        if self.L < 0:
+            raise ValueError("L must be non-negative")
+        if self.L == 0:
+            rho = np.empty(0, dtype=np.float32)
+        elif len(rho) != self.L:
             raise ValueError("Momentum length must be equal to L")
 
         self.rho = np.concatenate((
@@ -55,7 +59,7 @@ class BinLdpcTgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
                 ParameterSpec("delta", "delta (через запятую)", "float_list", [0.0, 1.0]),
                 ParameterSpec("alpha", "alpha", "float", 1.8, 0.0, 4.0, 0.01),
                 ParameterSpec("rho", "rho (через запятую)", "float_list", [2, 2, 2, 2, 2, 1, 1]),
-                ParameterSpec("L", "L", "int", 7, 1, 32, 1),
+                ParameterSpec("L", "L (0 отключает momentum)", "int", 7, 0, 32, 1),
             ),
             observables=(
                 ObservableSpec("margin", "Запас E - E_threshold", True),
@@ -63,6 +67,12 @@ class BinLdpcTgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
             categories=(
                 CategorySpec("correct", "Верное действие", "#2e7d32"),
                 CategorySpec("incorrect", "Ошибочное действие", "#c62828"),
+                CategorySpec("bit_error", "Ошибочный бит (1)", "#7b1fa2"),
+                CategorySpec("bit_correct", "Верный бит (0)", "#1565c0"),
+            ),
+            category_groups=(
+                CategoryGroupSpec("action", "По качеству действия", ("correct", "incorrect")),
+                CategoryGroupSpec("bit_state", "По состоянию бита", ("bit_error", "bit_correct")),
             ),
         )
 
@@ -70,7 +80,7 @@ class BinLdpcTgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
     def validate_parameters(cls, parameters):
         parsed = super().validate_parameters(parameters)
         cls._validate_delta(parsed["delta"])
-        if len(parsed["rho"]) != parsed["L"]:
+        if parsed["L"] > 0 and len(parsed["rho"]) != parsed["L"]:
             raise ValueError("Длина rho должна совпадать с L")
         return parsed
 
@@ -99,9 +109,10 @@ class BinLdpcTgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
             np.minimum(state["ages"], parameters["L"]) + 1,
         ).astype(np.int32)
         momentum = np.zeros(x.shape, dtype=np.float32)
-        within = ages <= parameters["L"]
-        rho = np.asarray(parameters["rho"], dtype=np.float32)
-        momentum[within] = rho[ages[within] - 1]
+        if parameters["L"] > 0:
+            within = ages <= parameters["L"]
+            rho = np.asarray(parameters["rho"], dtype=np.float32)
+            momentum[within] = rho[ages[within] - 1]
         checks = self.bpsk_syndrome(x)
         incident = np.bincount(
             self.edge_vn, weights=checks[self.edge_cn], minlength=self.block_length,
@@ -135,12 +146,15 @@ class BinLdpcTgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
         return bool(np.all(self.bpsk_syndrome(self.hard_decision(state)) == 1))
 
     def classify(self, before, after, diagnostics, active, transmitted):
-        correct = (diagnostics["flip"] == (before["x"] != transmitted)) & active[:, None]
-        observed = np.broadcast_to(active[:, None], correct.shape)
+        bit_error = before["x"] != transmitted
+        correct = (diagnostics["flip"] == bit_error) & active[:, None]
+        observed = np.broadcast_to(active[:, None], bit_error.shape)
         values = {key: diagnostics[key] for key in ("margin",)}
         return {
             "correct": masked_samples(correct, values),
             "incorrect": masked_samples(observed & ~correct, values),
+            "bit_error": masked_samples(observed & bit_error, values),
+            "bit_correct": masked_samples(observed & ~bit_error, values),
         }
 
     def decode(self, llr_in, llr_out, rng=None):

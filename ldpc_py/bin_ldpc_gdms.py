@@ -4,7 +4,7 @@ import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
 from visualisation.error_by_energy_visualisation.base import VisualizableDecoderBase, masked_samples
 from visualisation.error_by_energy_visualisation.models import (
-    CategorySpec, DecoderSpec, ObservableSpec, ParameterSpec, StepResult,
+    CategoryGroupSpec, CategorySpec, DecoderSpec, ObservableSpec, ParameterSpec, StepResult,
 )
 
 class BinLdpcGdmsDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
@@ -60,6 +60,11 @@ class BinLdpcGdmsDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
                 CategorySpec("toward_changed", "К истинному биту · решение изменилось", "#66bb6a"),
                 CategorySpec("away_unchanged", "От истинного бита · решение не изменилось", "#ef6c00"),
                 CategorySpec("away_changed", "От истинного бита · решение изменилось", "#c62828"),
+            ),
+            category_groups=(
+                CategoryGroupSpec("direction", "По направлению и изменению решения", (
+                    "toward_unchanged", "toward_changed", "away_unchanged", "away_changed",
+                )),
             ),
         )
 

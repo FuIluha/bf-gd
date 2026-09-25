@@ -42,7 +42,7 @@ class SessionTests(unittest.TestCase):
             session.snapshots[0].state.fields["x"][0, 0] = -1
 
     def test_round_trip_for_all_decoders(self):
-        for key in ("ftgdbf", "pmgdbf", "gdms"):
+        for key in ("ftgdbf", "pmgdbf", "gdms", "tgdbf"):
             with self.subTest(key=key):
                 session = make_session(key)
                 session.step_forward(session.spec.defaults())
@@ -54,6 +54,22 @@ class SessionTests(unittest.TestCase):
                 for before, after in zip(session.snapshots, restored.snapshots):
                     for field in before.state.fields:
                         np.testing.assert_array_equal(before.state.fields[field], after.state.fields[field])
+
+    def test_tgdbf_without_momentum_survives_round_trip(self):
+        session = make_session("tgdbf")
+        parameters = session.spec.defaults()
+        parameters["L"] = 0
+
+        session.step_forward(parameters)
+        restored = ExplorerSession.from_bytes(session.to_bytes(), workers=1)
+
+        self.assertEqual(restored.cursor, 1)
+        self.assertEqual(restored.transitions[-1].parameters["L"], 0)
+        for field in session.current.state.fields:
+            np.testing.assert_array_equal(
+                session.current.state.fields[field],
+                restored.current.state.fields[field],
+            )
 
     def test_comparison_requires_same_batch(self):
         session = make_session()

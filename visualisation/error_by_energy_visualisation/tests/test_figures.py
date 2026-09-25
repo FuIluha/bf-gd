@@ -3,12 +3,36 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from visualisation.error_by_energy_visualisation.figures import performance_figure
+from visualisation.error_by_energy_visualisation.figures import histogram_figure, performance_figure
 from visualisation.error_by_energy_visualisation.app import _layout
-from visualisation.error_by_energy_visualisation.models import Metrics
+from visualisation.error_by_energy_visualisation.models import (
+    CategoryGroupSpec, CategorySpec, DecoderSpec, HistogramResult, Metrics, ObservableSpec,
+)
 
 
 class PerformanceFigureTests(unittest.TestCase):
+    def test_distribution_components_are_overlaid_without_total_line(self):
+        histogram = HistogramResult(
+            np.asarray([0.0, 1.0, 2.0]),
+            {"first": np.asarray([2, 0]), "second": np.asarray([1, 1])},
+            {"first": np.asarray([0.2, 0.4]), "second": np.asarray([0.8, 1.2])},
+            "manual", normalization_count=4,
+        )
+        spec = DecoderSpec(
+            "test", "Test", (), (ObservableSpec("value", "Value"),),
+            (CategorySpec("first", "First", "#111111"),
+             CategorySpec("second", "Second", "#222222")),
+            (CategoryGroupSpec("all", "All", ("first", "second")),),
+        )
+
+        figure = histogram_figure(
+            histogram, "density", "linear", spec.observables[0], spec, 0,
+        )
+
+        self.assertEqual(figure.layout.barmode, "overlay")
+        self.assertEqual(len(figure.data), 2)
+        self.assertTrue(all(trace.type == "bar" for trace in figure.data))
+
     def test_ber_fer_are_always_logarithmic(self):
         view = SimpleNamespace(
             snapshots=[

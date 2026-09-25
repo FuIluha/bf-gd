@@ -3,7 +3,7 @@ import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
 from visualisation.error_by_energy_visualisation.base import VisualizableDecoderBase, masked_samples
 from visualisation.error_by_energy_visualisation.models import (
-    CategorySpec, DecoderSpec, ObservableSpec, ParameterSpec, StepResult,
+    CategoryGroupSpec, CategorySpec, DecoderSpec, ObservableSpec, ParameterSpec, StepResult,
 )
 
 
@@ -51,6 +51,9 @@ class BinLdpcFtgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
             categories=(
                 CategorySpec("correct", "Верное действие", "#2e7d32"),
                 CategorySpec("incorrect", "Ошибочное действие", "#c62828"),
+            ),
+            category_groups=(
+                CategoryGroupSpec("action", "По качеству действия", ("correct", "incorrect")),
             ),
         )
 

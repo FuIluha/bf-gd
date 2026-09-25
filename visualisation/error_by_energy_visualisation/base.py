@@ -17,7 +17,7 @@ class VisualizableDecoderBase(ABC):
     @classmethod
     @abstractmethod
     def describe(cls) -> DecoderSpec:
-        """Parameters, available X values, category names and display labels."""
+        """Parameters, X values, categories, decomposition groups and labels."""
 
     @classmethod
     def validate_parameters(cls, parameters):

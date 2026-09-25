@@ -60,12 +60,22 @@ class CategorySpec:
 
 
 @dataclass(frozen=True)
+class CategoryGroupSpec:
+    """A non-overlapping category partition used for shared normalisation."""
+
+    key: str
+    label: str
+    categories: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DecoderSpec:
     key: str
     title: str
     parameters: Tuple[ParameterSpec, ...]
     observables: Tuple[ObservableSpec, ...]
     categories: Tuple[CategorySpec, ...]
+    category_groups: Tuple[CategoryGroupSpec, ...]
 
     def validate(self):
         if not self.key or not self.title or not self.observables or not self.categories:
@@ -76,6 +86,33 @@ class DecoderSpec:
                 raise ValueError("Decoder description contains duplicate/empty keys")
         for parameter in self.parameters:
             parameter.parse(parameter.default)
+        category_keys = {item.key for item in self.categories}
+        group_keys = [item.key for item in self.category_groups]
+        if not group_keys:
+            raise ValueError("Decoder description requires at least one category group")
+        if len(group_keys) != len(set(group_keys)) or any(not key for key in group_keys):
+            raise ValueError("Decoder description contains duplicate/empty category group keys")
+        grouped = []
+        for group in self.category_groups:
+            if not group.label or not group.categories:
+                raise ValueError("Category group must have a label and categories")
+            if len(group.categories) != len(set(group.categories)):
+                raise ValueError(f"Category group {group.key} contains duplicates")
+            if not set(group.categories).issubset(category_keys):
+                raise ValueError(f"Category group {group.key} contains unknown categories")
+            grouped.extend(group.categories)
+        if set(grouped) != category_keys or len(grouped) != len(category_keys):
+            raise ValueError("Every category must belong to exactly one category group")
+
+    def groups(self):
+        """Return the decoder-defined non-overlapping category partitions."""
+        return self.category_groups
+
+    def group(self, key):
+        for group in self.groups():
+            if group.key == key:
+                return group
+        raise ValueError(f"Unknown category group: {key}")
 
     def parse_parameters(self, values):
         return {
@@ -189,6 +226,7 @@ class HistogramResult:
     counts: Mapping[str, np.ndarray]
     values: Mapping[str, np.ndarray]
     method: str
+    normalization_count: Optional[int] = None
 
 
 @dataclass(frozen=True)

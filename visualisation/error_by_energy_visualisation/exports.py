@@ -17,6 +17,7 @@ def histogram_csv(histogram, mode):
         "bin_left",
         "bin_right",
         "bin_center",
+        "normalization_count",
         *[f"{key}_{mode}" for key in histogram.counts],
         *[f"{key}_count" for key in histogram.counts],
     ])
@@ -27,6 +28,7 @@ def histogram_csv(histogram, mode):
             left,
             right,
             (left + right) / 2.0,
+            histogram.normalization_count,
             *[heights[key][index] for key in histogram.counts],
             *[histogram.counts[key][index] for key in histogram.counts],
         ])
@@ -35,11 +37,15 @@ def histogram_csv(histogram, mode):
 
 def summary_json(view, observation, histogram, display_settings, decoder_spec):
     payload = {
-        "schema": "bf-gd-energy-view/v2",
+        "schema": "bf-gd-energy-view/v3",
         "algorithm": view.algorithm,
         "decoder_title": decoder_spec.title,
         "observables": {item.key: item.label for item in decoder_spec.observables},
         "categories": {item.key: item.label for item in decoder_spec.categories},
+        "category_groups": {
+            item.key: {"label": item.label, "categories": list(item.categories)}
+            for item in decoder_spec.groups()
+        },
         "current_iteration": view.cursor,
         "dataset": view.metadata,
         "current_metrics": view.snapshots[view.cursor].metrics.to_dict(),
@@ -47,6 +53,7 @@ def summary_json(view, observation, histogram, display_settings, decoder_spec):
         "active_frames": int(np.count_nonzero(observation.decision_frames)),
         "histogram": {
             "method": histogram.method,
+            "normalization_count": histogram.normalization_count,
             "settings": dict(display_settings),
             "edges": histogram.edges.tolist(),
             "category_counts": {key: value.tolist() for key, value in histogram.counts.items()},

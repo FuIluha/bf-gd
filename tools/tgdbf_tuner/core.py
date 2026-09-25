@@ -46,11 +46,15 @@ class TuningConfig:
                 raise ValueError("bin width must be positive and finite")
         elif not np.isfinite(self.fixed_delta) or self.fixed_delta < 0:
             raise ValueError("fixed delta must be finite and non-negative")
-        if min(self.train_frames, self.eval_frames, self.workers, self.iterations, self.L) <= 0:
-            raise ValueError("frame counts, workers, iterations and L must be positive")
+        if min(self.train_frames, self.eval_frames, self.workers, self.iterations) <= 0:
+            raise ValueError("frame counts, workers and iterations must be positive")
+        if self.L < 0:
+            raise ValueError("L must be non-negative")
         if not np.isfinite(self.alpha) or self.alpha < 0:
             raise ValueError("alpha must be finite and non-negative")
-        if len(self.rho) != self.L or not np.all(np.isfinite(self.rho)):
+        if not self.rho or not np.all(np.isfinite(self.rho)):
+            raise ValueError("rho must contain at least one finite value")
+        if self.L > 0 and len(self.rho) != self.L:
             raise ValueError("rho must contain L finite values")
 
     def metadata(self):
@@ -62,7 +66,9 @@ class TuningConfig:
             "train_frames": self.train_frames, "eval_frames": self.eval_frames,
             "seed": self.seed, "workers": self.workers,
             "iterations": self.iterations, "alpha": self.alpha,
-            "rho": list(self.rho), "L": self.L, "output": str(self.output),
+            "rho": list(self.rho),
+            "L": self.L, "momentum_enabled": self.L > 0,
+            "output": str(self.output),
         }
 
 
