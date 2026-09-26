@@ -7,6 +7,7 @@ from visualisation.error_by_energy_visualisation.models import FrameBatch
 from ldpc_py.bin_ldpc_ftgdbf import BinLdpcFtgdbfDecoder
 from ldpc_py.bin_ldpc_gdms import BinLdpcGdmsDecoder
 from ldpc_py.bin_ldpc_pmgdbf import BinLdpcPmgdbfDecoder
+from ldpc_py.bin_ldpc_tgdbf import BinLdpcTgdbfDecoder
 
 
 PCM = np.asarray([
@@ -95,6 +96,59 @@ class DecoderTests(unittest.TestCase):
         ])
         no_momentum = large["alpha"] * next_state.fields["x"] * self.batch.received + incident
         np.testing.assert_allclose(result.diagnostics["energy"][never[0]], no_momentum[0][never[0]])
+
+    def test_l_zero_disables_momentum(self):
+        for decoder_type in (BinLdpcTgdbfDecoder, BinLdpcPmgdbfDecoder):
+            with self.subTest(decoder=decoder_type.__name__):
+                raw = decoder_type.describe().defaults()
+                raw.update({"L": 0, "rho": [100, 100, 100]})
+                if "p" in raw:
+                    raw["p"] = 1.0
+                parameters = decoder_type.validate_parameters(raw)
+                self.assertEqual(parameters["rho"], [100.0, 100.0, 100.0])
+                decoder = make_decoder(decoder_type, parameters=parameters)
+                received = self.batch.received[0]
+                state = decoder.initial_state(received, parameters)
+                first = decoder.step_state(
+                    state, received, parameters, 0, np.random.default_rng(1),
+                )
+                second = decoder.step_state(
+                    first.fields, received, parameters, 1, np.random.default_rng(2),
+                )
+                x = first.fields["x"]
+                checks = decoder.bpsk_syndrome(x)
+                incident = np.bincount(
+                    self.graph.edge_vn, weights=checks[self.graph.edge_cn],
+                    minlength=self.graph.block_length,
+                )
+                energy = parameters["alpha"] * x * received + incident
+                expected_margin = energy - np.min(energy) - (
+                    parameters["delta"][1]
+                    if decoder_type is BinLdpcTgdbfDecoder else parameters["delta"]
+                )
+                np.testing.assert_allclose(second.diagnostics["margin"], expected_margin)
+
+    def test_tgdbf_bit_state_categories_overlap_action_categories(self):
+        decoder = make_decoder(BinLdpcTgdbfDecoder)
+        engine = BatchDecoderEngine(self.graph, self.batch, seed=4)
+        parameters = decoder.describe().defaults()
+        state = engine.initial_state(decoder, parameters)
+        _, observation = engine.step(decoder, state, parameters, 0)
+
+        self.assertEqual(set(observation.categories), {
+            "correct", "incorrect", "bit_error", "bit_correct",
+        })
+        active_bits = int(observation.decision_frames.sum()) * self.graph.block_length
+        self.assertEqual(
+            len(observation.categories["bit_error"].frame_indices)
+            + len(observation.categories["bit_correct"].frame_indices),
+            active_bits,
+        )
+        self.assertEqual(
+            len(observation.categories["correct"].frame_indices)
+            + len(observation.categories["incorrect"].frame_indices),
+            active_bits,
+        )
 
     def test_gdms_edge_step_matches_scalar_formula(self):
         decoder = make_decoder(BinLdpcGdmsDecoder)

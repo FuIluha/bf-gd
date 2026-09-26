@@ -10,6 +10,7 @@ from .bin_ldpc_egdbf import BinLdpcEgdbfDecoder
 from .cpp_bin_ldpc_egdbf import CppBinLdpcEgdbfDecoder
 from .bin_ldpc_gdms import BinLdpcGdmsDecoder
 from .cpp_bin_ldpc_gdms import CppBinLdpcGdmsDecoder
+from .bin_ldpc_tgdbf import BinLdpcTgdbfDecoder
 
 _DECODER_TYPES = {
     "bit-flipping": BinLdpcBfDecoder,
@@ -24,6 +25,7 @@ _DECODER_TYPES = {
     "cpp edge-wise gradient descent bit-flipping": CppBinLdpcEgdbfDecoder,
     "gradient descent min-sum": BinLdpcGdmsDecoder,
     "cpp gradient descent min-sum": CppBinLdpcGdmsDecoder,
+    "test gradient descent bit-flipping": BinLdpcTgdbfDecoder,
 }
 
 def create_decoder(algorithm, alist_filename, **kwargs):

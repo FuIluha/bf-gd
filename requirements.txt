@@ -1,5 +1,11 @@
+filelock
 galois
+numpy
+pandas
+plotly
+rich
+scikit-commpy
+scipy
 -r ./lbc_encoder/requirements.txt
 -r ./ldpc_soft_py/requirements.txt
--r ./ldpc_bf_py/requirements.txt
--r ./simulator_awgn_python/requirements.txt
+-r ./visualisation/error_by_energy_visualisation/requirements.txt

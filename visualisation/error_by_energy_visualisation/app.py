@@ -40,6 +40,8 @@ def _layout(metadata):
     catalog = decoder_catalog()
     specs = [item.describe() for item in catalog.values()]
     first = specs[0]
+    first_group = first.groups()[0]
+    first_categories = [item for item in first.categories if item.key in first_group.categories]
     return html.Div(className="app-shell", children=[
         dcc.Store(id="browser-session-id", data=str(uuid.uuid4()), storage_type="session"),
         dcc.Store(id="revision", data=0),
@@ -113,15 +115,21 @@ def _layout(metadata):
                         options=[{"label": item.label, "value": item.key} for item in first.observables],
                         clearable=False,
                     ),
+                    _label("Разложение"),
+                    dcc.Dropdown(
+                        id="category-group", value=first_group.key,
+                        options=[{"label": item.label, "value": item.key} for item in first.groups()],
+                        clearable=False, searchable=False,
+                    ),
                     _label("Категории"),
                     dcc.Checklist(
-                        id="visible-categories", value=[item.key for item in first.categories],
-                        options=[{"label": item.label, "value": item.key} for item in first.categories],
+                        id="visible-categories", value=[item.key for item in first_categories],
+                        options=[{"label": item.label, "value": item.key} for item in first_categories],
                         className="radio-stack",
                     ),
                     _label("Ось Y гистограммы"),
                     dcc.RadioItems(id="histogram-mode", options=[
-                        {"label": "Плотность", "value": "density"},
+                        {"label": "Совместная плотность", "value": "density"},
                         {"label": "Количество", "value": "count"},
                     ], value="density", inline=True, className="radio-row"),
                     dcc.RadioItems(id="y-scale", options=[
@@ -236,7 +244,7 @@ def _register_callbacks(app, registry):
     @app.callback(
         Output({"type": "decoder-panel", "algorithm": ALL}, "style"),
         Output("observable", "options"), Output("observable", "value"),
-        Output("visible-categories", "options"), Output("visible-categories", "value"),
+        Output("category-group", "options"), Output("category-group", "value"),
         Input("algorithm", "value"),
         State({"type": "decoder-panel", "algorithm": ALL}, "id"),
     )
@@ -246,8 +254,22 @@ def _register_callbacks(app, registry):
             [{} if item["algorithm"] == algorithm else {"display": "none"} for item in panel_ids],
             [{"label": item.label, "value": item.key} for item in spec.observables],
             spec.observables[0].key,
-            [{"label": item.label, "value": item.key} for item in spec.categories],
-            [item.key for item in spec.categories],
+            [{"label": item.label, "value": item.key} for item in spec.groups()],
+            spec.groups()[0].key,
+        )
+
+    @app.callback(
+        Output("visible-categories", "options"), Output("visible-categories", "value"),
+        Input("algorithm", "value"), Input("category-group", "value"),
+    )
+    def category_controls(algorithm, group_key):
+        spec = decoder_catalog()[algorithm].describe()
+        groups = spec.groups()
+        group = next((item for item in groups if item.key == group_key), groups[0])
+        categories = [item for item in spec.categories if item.key in group.categories]
+        return (
+            [{"label": item.label, "value": item.key} for item in categories],
+            [item.key for item in categories],
         )
 
     @app.callback(
@@ -328,13 +350,14 @@ def _register_callbacks(app, registry):
         Output("forward", "disabled"), Output("dataset-metadata", "children"),
         Input("revision", "data"), Input("algorithm", "value"),
         Input({"type": "parameter-input", "algorithm": ALL, "name": ALL}, "value"),
-        Input("observable", "value"), Input("visible-categories", "value"),
+        Input("observable", "value"), Input("category-group", "value"),
+        Input("visible-categories", "value"),
         Input("histogram-mode", "value"), Input("y-scale", "value"),
         Input("bin-mode", "value"), Input("manual-bins", "value"),
         State("browser-session-id", "data"),
         State({"type": "parameter-input", "algorithm": ALL, "name": ALL}, "id"),
     )
-    def render(_revision, _algorithm, values, observable_key, selected_categories,
+    def render(_revision, _algorithm, values, observable_key, group_key, selected_categories,
                mode, scale, bin_mode, manual_bins, session_id, parameter_ids):
         session = registry.get(session_id)
         view = session.view()
@@ -347,17 +370,25 @@ def _register_callbacks(app, registry):
             observables = {item.key: item for item in spec.observables}
             if observable_key not in observables:
                 observable_key = spec.observables[0].key
-            allowed = {item.key for item in spec.categories}
+            groups = spec.groups()
+            group = next((item for item in groups if item.key == group_key), groups[0])
+            allowed = set(group.categories)
             selected = [key for key in (selected_categories or []) if key in allowed]
             bins = "adaptive" if bin_mode == "adaptive" else int(manual_bins)
-            histogram = build_histogram(observation, observable_key, selected, bins)
+            histogram = build_histogram(
+                observation, observable_key, selected, bins,
+                normalization_keys=group.categories,
+            )
             plot = histogram_figure(histogram, mode, scale, observables[observable_key], spec, view.cursor)
             active = int(observation.decision_frames.sum())
             summary = " · ".join(
                 f"{item.label}: {observation.categories[item.key].frame_indices.size if item.key in observation.categories else 0:,}"
                 for item in spec.categories if item.key in selected
             ) or "Категории скрыты"
-            status = f"Предпросмотр с текущими параметрами · {histogram.method} · {sum(sample.size for sample in histogram.values.values()):,} наблюдений"
+            status = (
+                f"Предпросмотр с текущими параметрами · {histogram.method} · "
+                f"нормировка по {histogram.normalization_count:,} наблюдениям"
+            )
             preview = observation.after
             forward_disabled = active == 0
         except Exception as exc:
@@ -386,30 +417,41 @@ def _register_callbacks(app, registry):
         State("browser-session-id", "data"),
         State({"type": "parameter-input", "algorithm": ALL, "name": ALL}, "id"),
         State({"type": "parameter-input", "algorithm": ALL, "name": ALL}, "value"),
-        State("observable", "value"), State("visible-categories", "value"),
+        State("observable", "value"), State("category-group", "value"),
+        State("visible-categories", "value"),
         State("histogram-mode", "value"), State("y-scale", "value"),
         State("bin-mode", "value"), State("manual-bins", "value"),
         prevent_initial_call=True,
     )
     def export_view(_csv, _json, session_id, ids, values, observable_key,
-                    selected_categories, mode, scale, bin_mode, manual_bins):
+                    group_key, selected_categories, mode, scale, bin_mode, manual_bins):
         session = registry.get(session_id)
         parameters = _parameters(session, ids, values)
         view = session.view()
         _, observation = session.preview(parameters)
         bins = "adaptive" if bin_mode == "adaptive" else int(manual_bins)
-        selected = [key for key in (selected_categories or []) if key in {item.key for item in session.spec.categories}]
-        histogram = build_histogram(observation, observable_key, selected, bins)
+        spec = session.spec
+        observables = {item.key for item in spec.observables}
+        if observable_key not in observables:
+            observable_key = spec.observables[0].key
+        groups = spec.groups()
+        group = next((item for item in groups if item.key == group_key), groups[0])
+        selected = [key for key in (selected_categories or []) if key in set(group.categories)]
+        histogram = build_histogram(
+            observation, observable_key, selected, bins,
+            normalization_keys=group.categories,
+        )
         filename = f"energy-iteration-{view.cursor}-{_timestamp()}"
         if ctx.triggered_id == "export-csv":
             return dcc.send_string(histogram_csv(histogram, mode), filename + ".csv"), no_update
         settings = {
-            "observable": observable_key, "visible_categories": selected,
+            "observable": observable_key, "category_group": group.key,
+            "visible_categories": selected,
             "histogram_mode": mode, "histogram_y_scale": scale,
             "performance_y_scale": "log", "bins": bins, "preview_parameters": parameters,
         }
         return no_update, dcc.send_string(
-            summary_json(view, observation, histogram, settings, session.spec), filename + ".json",
+            summary_json(view, observation, histogram, settings, spec), filename + ".json",
         )
 
 

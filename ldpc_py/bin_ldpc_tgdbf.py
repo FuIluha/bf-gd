@@ -8,13 +8,12 @@ from visualisation.error_by_energy_visualisation.models import (
 MAX_AGE = np.iinfo(np.int32).max
 
 
-class BinLdpcPmgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
-    """Implementation of probabilistic momentum gradient descent bit-flipping decoder"""
+class BinLdpcTgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
+    """Implementation of test gradient descent bit-flipping decoder"""
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
-        self.delta = kwargs["delta"]
+        self.delta = self._validate_delta(kwargs["delta"]).tolist()
         self.alpha = kwargs["alpha"]
-        self.p = kwargs["p"]
         rho = np.asarray(kwargs["rho"], dtype=np.float32)
         self.L = kwargs["L"]
 
@@ -55,33 +54,49 @@ class BinLdpcPmgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
     @classmethod
     def describe(cls):
         return DecoderSpec(
-            key="pmgdbf", title="PMGDBF",
+            key="tgdbf", title="TGDBF",
             parameters=(
-                ParameterSpec("delta", "delta", "float", 1.0, 0.0, 4.0, 0.01),
+                ParameterSpec("delta", "delta (через запятую)", "float_list", [0.0, 1.0]),
                 ParameterSpec("alpha", "alpha", "float", 1.8, 0.0, 4.0, 0.01),
-                ParameterSpec("p", "p", "float", 0.9, 0.0, 1.0, 0.01),
                 ParameterSpec("rho", "rho (через запятую)", "float_list", [2, 2, 2, 2, 2, 1, 1]),
                 ParameterSpec("L", "L (0 отключает momentum)", "int", 7, 0, 32, 1),
             ),
             observables=(
-                ObservableSpec("energy", "Энергия E"),
-                ObservableSpec("margin", "Запас E − E_threshold", True),
+                ObservableSpec("margin", "Запас E - E_threshold", True),
             ),
             categories=(
                 CategorySpec("correct", "Верное действие", "#2e7d32"),
                 CategorySpec("incorrect", "Ошибочное действие", "#c62828"),
+                CategorySpec("bit_error", "Ошибочный бит (1)", "#7b1fa2"),
+                CategorySpec("bit_correct", "Верный бит (0)", "#1565c0"),
             ),
             category_groups=(
                 CategoryGroupSpec("action", "По качеству действия", ("correct", "incorrect")),
+                CategoryGroupSpec("bit_state", "По состоянию бита", ("bit_error", "bit_correct")),
             ),
         )
 
     @classmethod
     def validate_parameters(cls, parameters):
         parsed = super().validate_parameters(parameters)
+        cls._validate_delta(parsed["delta"])
         if parsed["L"] > 0 and len(parsed["rho"]) != parsed["L"]:
             raise ValueError("Длина rho должна совпадать с L")
         return parsed
+
+    @staticmethod
+    def _validate_delta(delta):
+        try:
+            values = np.asarray(delta, dtype=np.float64)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("delta должна содержать числа") from exc
+        if values.ndim != 1 or values.size < 2 or values.size % 2 != 0:
+            raise ValueError("delta должна содержать пары low, high")
+        if not np.all(np.isfinite(values)):
+            raise ValueError("delta должна содержать конечные числа")
+        if np.any(values[::2] > values[1::2]):
+            raise ValueError("В каждой паре delta должно выполняться low <= high")
+        return values
 
     def initial_state(self, received, parameters):
         x = np.where(received >= 0, 1, -1).astype(np.int8)
@@ -103,14 +118,25 @@ class BinLdpcPmgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
             self.edge_vn, weights=checks[self.edge_cn], minlength=self.block_length,
         )
         energy = parameters["alpha"] * x * received + incident + momentum
-        threshold = np.min(energy) + parameters["delta"]
-        flip = (energy <= threshold) & (rng.random(self.block_length) < parameters["p"])
+
+        relative_energy = energy - np.min(energy)
+        delta = np.asarray(parameters["delta"], dtype=np.float64)
+        bounds = delta.reshape(-1, 2)
+
+        flip = np.zeros_like(x, dtype=bool)
+        for low, high in bounds:
+            flip |= (relative_energy >= low) & (relative_energy <= high)
+
+        # The second delta value is the main threshold used for the X axis.
+        margin = relative_energy - delta[1]
+
         next_x = x.copy()
         next_x[flip] *= -1
         ages[flip] = 0
+
         return StepResult(
             {"x": next_x, "ages": ages},
-            {"energy": energy, "margin": energy - threshold, "flip": flip},
+            {"margin": margin, "flip": flip},
         )
 
     def hard_decision(self, state):
@@ -120,19 +146,22 @@ class BinLdpcPmgdbfDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
         return bool(np.all(self.bpsk_syndrome(self.hard_decision(state)) == 1))
 
     def classify(self, before, after, diagnostics, active, transmitted):
-        correct = (diagnostics["flip"] == (before["x"] != transmitted)) & active[:, None]
-        observed = np.broadcast_to(active[:, None], correct.shape)
-        values = {key: diagnostics[key] for key in ("energy", "margin")}
+        bit_error = before["x"] != transmitted
+        correct = (diagnostics["flip"] == bit_error) & active[:, None]
+        observed = np.broadcast_to(active[:, None], bit_error.shape)
+        values = {key: diagnostics[key] for key in ("margin",)}
         return {
             "correct": masked_samples(correct, values),
             "incorrect": masked_samples(observed & ~correct, values),
+            "bit_error": masked_samples(observed & bit_error, values),
+            "bit_correct": masked_samples(observed & ~bit_error, values),
         }
 
     def decode(self, llr_in, llr_out, rng=None):
         if rng is None:
             rng = np.random.default_rng()
         received = llr_in.copy()
-        parameters = {"delta": self.delta, "alpha": self.alpha, "p": self.p,
+        parameters = {"delta": self.delta, "alpha": self.alpha,
                       "rho": self.rho[:-1], "L": self.L}
         state = self.initial_state(received, parameters)
         for iteration in range(self.n_iterations): # iteration loop

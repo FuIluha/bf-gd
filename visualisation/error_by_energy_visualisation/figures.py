@@ -33,7 +33,7 @@ def histogram_figure(
     edges = histogram.edges
     centers = (edges[:-1] + edges[1:]) / 2.0
     widths = np.diff(edges)
-    y_title = "Плотность вероятности" if mode == "density" else "Количество наблюдений"
+    y_title = "Совместная плотность" if mode == "density" else "Количество наблюдений"
     x_title = observable.label
 
     figure = go.Figure()
