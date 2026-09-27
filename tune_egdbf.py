@@ -19,9 +19,10 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_egdbf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf.txt"
 
-DEFAULT_ALPHAS = tuple(np.round(np.arange(0.2, 2.001, 0.1), 2))
-DEFAULT_DELTAS = tuple(np.round(np.arange(0.0, 2.001, 0.1), 2))
+DEFAULT_ALPHAS = tuple(np.round(np.arange(1.0, 2.001, 0.1), 2))
+DEFAULT_DELTAS = tuple(np.round(np.arange(1.0, 3.001, 0.1), 2))
 DEFAULT_PROBABILITIES = (1.0,)
+DEFAULT_RHO_VALUES = tuple(np.round(np.arange(0.0, 4.001, 1.0), 2))
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -70,6 +71,26 @@ def parse_args():
         type=comma_separated_floats,
         default=DEFAULT_PROBABILITIES,
     )
+    parser.add_argument(
+        "--momentum-length",
+        type=int,
+        default=0,
+        help="momentum length L; 0 disables momentum",
+    )
+    parser.add_argument(
+        "--rho-values",
+        type=comma_separated_floats,
+        default=DEFAULT_RHO_VALUES,
+        help=(
+            "values for each rho(l); only profiles with "
+            "rho(1) >= ... >= rho(L) > 0 are searched (Savin, eq. 5)"
+        ),
+    )
+    parser.add_argument(
+        "--rho-unconstrained",
+        action="store_true",
+        help="search every rho profile from --rho-values, ignoring eq. 5",
+    )
     return parser.parse_args()
 
 
@@ -93,6 +114,12 @@ def validate_args(args):
     if any(not np.isfinite(value) or not 0 <= value <= 1
            for value in args.probabilities):
         raise ValueError("all probabilities must be finite and in [0, 1]")
+    if args.momentum_length < 0:
+        raise ValueError("--momentum-length must be non-negative")
+    if any(not np.isfinite(value) for value in args.rho_values):
+        raise ValueError("all rho values must be finite")
+    if args.momentum_length and not rho_profiles(args):
+        raise ValueError("--rho-values must contain a positive value")
 
 
 def load_base_experiment(config_path):
@@ -106,17 +133,32 @@ def load_base_experiment(config_path):
     return experiment, config.get("simulation", {})
 
 
+def rho_profiles(args):
+    """Return momentum profiles with rho(1) >= ... >= rho(L) > 0."""
+    if args.momentum_length == 0:
+        return [()]
+    if args.rho_unconstrained:
+        values = sorted({float(value) for value in args.rho_values},
+                        reverse=True)
+        return list(itertools.product(values, repeat=args.momentum_length))
+    values = sorted({float(value) for value in args.rho_values if value > 0},
+                    reverse=True)
+    return list(itertools.combinations_with_replacement(
+        values, args.momentum_length,
+    ))
+
+
 def parameter_grid(args):
     candidates = []
-    for alpha, delta, probability in itertools.product(
-        args.alphas, args.deltas, args.probabilities,
+    for alpha, delta, probability, rho in itertools.product(
+        args.alphas, args.deltas, args.probabilities, rho_profiles(args),
     ):
         candidates.append({
             "alpha": float(alpha),
             "delta": float(delta),
             "p": float(probability),
-            "rho": [],
-            "L": 0,
+            "rho": list(rho),
+            "L": len(rho),
         })
 
     unique_candidates = []
