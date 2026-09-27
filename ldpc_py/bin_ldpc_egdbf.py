@@ -12,6 +12,7 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
         super().__init__(alist_filename, **kwargs)
         self.alpha = float(kwargs["alpha"])
         self.delta = float(kwargs.get("delta", 0.0))
+        self.p = float(kwargs.get("p", 1.0))
         self.L = int(kwargs["L"])
         rho = np.asarray(kwargs["rho"], dtype=np.float64)
 
@@ -19,6 +20,8 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
             raise ValueError("alpha must be finite and positive")
         if not np.isfinite(self.delta) or self.delta < 0:
             raise ValueError("delta must be finite and non-negative")
+        if not np.isfinite(self.p) or not 0 <= self.p <= 1:
+            raise ValueError("p must be finite and in [0, 1]")
         if self.L < 0:
             raise ValueError("L must be non-negative")
         if len(rho) != self.L:
@@ -114,8 +117,28 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
         """Make the a-posteriori hard decision; channel breaks exact ties."""
         return self.hard_sign(posterior_score, channel_signs)
 
+    @staticmethod
+    def edge_flip_uniforms(seed, iteration, edges_count):
+        """Counter-based uniforms shared with the C++ decoder."""
+        counter = np.arange(edges_count, dtype=np.uint64)
+        counter += np.uint64(iteration * edges_count + 1)
+        value = np.add(
+            np.uint64(seed),
+            np.multiply(counter, np.uint64(0x9E3779B97F4A7C15), dtype=np.uint64),
+            dtype=np.uint64,
+        )
+        value = np.multiply(value ^ (value >> 30),
+                            np.uint64(0xBF58476D1CE4E5B9), dtype=np.uint64)
+        value = np.multiply(value ^ (value >> 27),
+                            np.uint64(0x94D049BB133111EB), dtype=np.uint64)
+        value ^= value >> 31
+        return (value >> 11).astype(np.float64) * (1.0 / (1 << 53))
+
     def decode(self, llr_in, llr_out, rng=None):
-        del rng  # E-GDBF message updates are deterministic.
+        if 0 < self.p < 1:
+            if rng is None:
+                rng = np.random.default_rng()
+            seed = int(rng.bit_generator.random_raw())
         y = np.asarray(llr_in, dtype=np.float64)
         channel_signs = np.where(y >= 0, 1, -1).astype(np.int8)
         variable_messages = channel_signs[self.edge_vn].copy()
@@ -143,6 +166,12 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
                 ages,
             )
             flip = energies <= self.energy_threshold(energies)
+            if self.p == 0:
+                flip[:] = False
+            elif self.p < 1:
+                flip &= self.edge_flip_uniforms(
+                    seed, iteration, self.edges_count,
+                ) < self.p
             variable_messages[flip] *= -1
             if self.L:
                 ages[flip] = 0

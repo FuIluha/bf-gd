@@ -97,8 +97,10 @@ The tuner searches all 399 alpha–delta pairs at 0.8 dB. Every pair is
 evaluated until 200 frame errors or two million trials. Momentum is always
 disabled (`L=0, rho=[]`); the experiment JSON is not changed. Results go to
 `params_cpp_egdbf.jsonl`, and the current best to `params_cpp_egdbf.txt`.
-Use `--snr`, `--alphas`, `--deltas`, `--max-errors`, and `--trials` to change
-the search.
+E-GDBF V1 also accepts a per-edge flip probability `p`: each eligible edge
+flips independently with probability `p`. Its default `p=1` reproduces the
+original deterministic decoder. Use `--probabilities` to search other values,
+along with `--snr`, `--alphas`, `--deltas`, `--max-errors`, and `--trials`.
 
 ## PMGDBF hyperparameter search
 

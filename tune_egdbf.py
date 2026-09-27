@@ -21,6 +21,7 @@ DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf.txt"
 
 DEFAULT_ALPHAS = tuple(np.round(np.arange(0.2, 2.001, 0.1), 2))
 DEFAULT_DELTAS = tuple(np.round(np.arange(0.0, 2.001, 0.1), 2))
+DEFAULT_PROBABILITIES = (1.0,)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -64,6 +65,11 @@ def parse_args():
         type=comma_separated_floats,
         default=DEFAULT_DELTAS,
     )
+    parser.add_argument(
+        "--probabilities",
+        type=comma_separated_floats,
+        default=DEFAULT_PROBABILITIES,
+    )
     return parser.parse_args()
 
 
@@ -84,6 +90,9 @@ def validate_args(args):
         raise ValueError("all alphas must be finite and positive")
     if any(not np.isfinite(value) or value < 0 for value in args.deltas):
         raise ValueError("all deltas must be finite and non-negative")
+    if any(not np.isfinite(value) or not 0 <= value <= 1
+           for value in args.probabilities):
+        raise ValueError("all probabilities must be finite and in [0, 1]")
 
 
 def load_base_experiment(config_path):
@@ -99,10 +108,13 @@ def load_base_experiment(config_path):
 
 def parameter_grid(args):
     candidates = []
-    for alpha, delta in itertools.product(args.alphas, args.deltas):
+    for alpha, delta, probability in itertools.product(
+        args.alphas, args.deltas, args.probabilities,
+    ):
         candidates.append({
             "alpha": float(alpha),
             "delta": float(delta),
+            "p": float(probability),
             "rho": [],
             "L": 0,
         })
