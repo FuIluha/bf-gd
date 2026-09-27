@@ -8,8 +8,6 @@ __pycache__
 data/*.pickle
 data/*.lock
 data/*.txt
-data/egdbf_v1_diagnosis.json
-data/egdbf_v1_diagnosis.npz
 plot_server.log
 simulator.log
 *crash.txt
