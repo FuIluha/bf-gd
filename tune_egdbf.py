@@ -21,7 +21,7 @@ DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf.txt"
 
 DEFAULT_ALPHAS = tuple(np.round(np.arange(1.0, 2.001, 0.1), 2))
 DEFAULT_DELTAS = tuple(np.round(np.arange(1.0, 3.001, 0.1), 2))
-DEFAULT_PROBABILITIES = (1.0,)
+DEFAULT_PROBABILITIES = (0.95, 1.0)
 DEFAULT_RHO_VALUES = tuple(np.round(np.arange(0.0, 4.001, 1.0), 2))
 
 _BASE_EXPERIMENT = None
@@ -83,7 +83,8 @@ def parse_args():
         default=DEFAULT_RHO_VALUES,
         help=(
             "values for each rho(l); only profiles with "
-            "rho(1) >= ... >= rho(L) > 0 are searched (Savin, eq. 5)"
+            "rho(1) >= ... >= rho(L) >= 0 are searched (Savin, eq. 5; "
+            "trailing zeros act as a shorter L)"
         ),
     )
     parser.add_argument(
@@ -119,7 +120,7 @@ def validate_args(args):
     if any(not np.isfinite(value) for value in args.rho_values):
         raise ValueError("all rho values must be finite")
     if args.momentum_length and not rho_profiles(args):
-        raise ValueError("--rho-values must contain a positive value")
+        raise ValueError("--rho-values must contain a non-negative value")
 
 
 def load_base_experiment(config_path):
@@ -134,14 +135,14 @@ def load_base_experiment(config_path):
 
 
 def rho_profiles(args):
-    """Return momentum profiles with rho(1) >= ... >= rho(L) > 0."""
+    """Return momentum profiles with rho(1) >= ... >= rho(L) >= 0."""
     if args.momentum_length == 0:
         return [()]
     if args.rho_unconstrained:
         values = sorted({float(value) for value in args.rho_values},
                         reverse=True)
         return list(itertools.product(values, repeat=args.momentum_length))
-    values = sorted({float(value) for value in args.rho_values if value > 0},
+    values = sorted({float(value) for value in args.rho_values if value >= 0},
                     reverse=True)
     return list(itertools.combinations_with_replacement(
         values, args.momentum_length,
