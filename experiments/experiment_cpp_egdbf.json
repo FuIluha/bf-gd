@@ -11,7 +11,8 @@
       "llr_type": "float32",
       "decoder_params": {
         "alpha": 1.8,
-        "rho": [2, 2, 2, 2, 2, 1, 1],
+        "delta": 1.0,
+        "rho": [2,2,2,2,2,1,1],
         "L": 7
       }
     }
