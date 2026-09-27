@@ -93,25 +93,12 @@ For the C++ E-GDBF V1 decoder, submit the existing tuner runner on the server:
 sbatch tune_egdbf.sh
 ```
 
-The tuner evaluates each parameter set until it collects 100 frame errors or
-reaches the `--trials` cap. It saves every result to `params_cpp_egdbf.jsonl`
-and the current best to `params_cpp_egdbf.txt`. By default, it searches alpha
-and two-level rho profiles at the delta from the experiment config.
-
-To search E-GDBF V1 at 0.8 dB with momentum disabled, use the existing runner:
-
-```console
-sbatch tune_egdbf.sh --no-momentum --snr 0.8 \
-  --alphas "$(seq -s, 0.2 0.1 2.0)" \
-  --deltas "$(seq -s, 0 0.1 2)" \
-  --max-errors 200 --trials 2000000 \
-  --output params_cpp_egdbf_no_momentum_0p8.txt
-```
-
-This searches all 399 alpha–delta pairs on the specified grid. Every pair is
-evaluated until 200 frame errors or two million trials. `--no-momentum` sets
-`L=0, rho=[]` for every candidate without changing the experiment JSON.
-The result file and its `.jsonl` log are separate from the default search.
+The tuner searches all 399 alpha–delta pairs at 0.8 dB. Every pair is
+evaluated until 200 frame errors or two million trials. Momentum is always
+disabled (`L=0, rho=[]`); the experiment JSON is not changed. Results go to
+`params_cpp_egdbf.jsonl`, and the current best to `params_cpp_egdbf.txt`.
+Use `--snr`, `--alphas`, `--deltas`, `--max-errors`, and `--trials` to change
+the search.
 
 ## EPMGDBF hyperparameter search
 
