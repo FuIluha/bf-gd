@@ -8,6 +8,8 @@ from .bin_ldpc_eafpmgdbf import BinLdpcEafpmgdbfDecoder
 from .bin_ldpc_ftgdbf import BinLdpcFtgdbfDecoder
 from .bin_ldpc_egdbf import BinLdpcEgdbfDecoder
 from .cpp_bin_ldpc_egdbf import CppBinLdpcEgdbfDecoder
+from .bin_ldpc_egdbf_v2 import BinLdpcEgdbfV2Decoder
+from .cpp_bin_ldpc_egdbf_v2 import CppBinLdpcEgdbfV2Decoder
 from .bin_ldpc_gdms import BinLdpcGdmsDecoder
 from .cpp_bin_ldpc_gdms import CppBinLdpcGdmsDecoder
 from .bin_ldpc_tgdbf import BinLdpcTgdbfDecoder
@@ -23,6 +25,8 @@ _DECODER_TYPES = {
     "fixed threshold gradient descent bit-flipping": BinLdpcFtgdbfDecoder,
     "edge-wise gradient descent bit-flipping": BinLdpcEgdbfDecoder,
     "cpp edge-wise gradient descent bit-flipping": CppBinLdpcEgdbfDecoder,
+    "edge-wise gradient descent bit-flipping v2": BinLdpcEgdbfV2Decoder,
+    "cpp edge-wise gradient descent bit-flipping v2": CppBinLdpcEgdbfV2Decoder,
     "gradient descent min-sum": BinLdpcGdmsDecoder,
     "cpp gradient descent min-sum": CppBinLdpcGdmsDecoder,
     "test gradient descent bit-flipping": BinLdpcTgdbfDecoder,

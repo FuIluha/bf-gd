@@ -6,7 +6,7 @@ Decoder of LDPC codes. Supports the following decoders:
 * PGDBF with momentum
 * EPMGDBF
 * FTGDBF (fixed-threshold gradient descent bit-flipping)
-* E-GDBF (edge-wise gradient descent bit-flipping), Python and C++
+* E-GDBF V1 and V2 (edge-wise gradient descent bit-flipping), Python and C++
 * GDMS (gradient-descent min-sum) with Python and C++ implementations
 
 ## Implementation notes
@@ -29,6 +29,12 @@ E[i->a] = q[i->a]*g[i->a] + rho[l[i->a]]
 E_th = min(E over all edges of the word) + delta
 q_new[i->a] = -q[i->a] if E[i->a] <= E_th else q[i->a]
 ```
+
+V2 changes only the threshold: compute the mean edge energy of each variable
+node, then use the smallest of these means plus `delta`. Individual edges are
+still flipped by comparing their own energy to that common threshold. V1 and
+V2 are separate decoder types in `decoder_factory.py`; the existing `run.sh`
+accepts `experiments/experiment_cpp_egdbf_v2.json` for V2.
 
 The hard a-posteriori word is computed separately:
 
