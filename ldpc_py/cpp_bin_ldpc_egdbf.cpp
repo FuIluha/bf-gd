@@ -15,6 +15,7 @@ class CppEgdbfDecoder {
       double delta,
       const double* rho,
       uint32_t momentum_length,
+      bool use_mean_threshold,
       const uint32_t* edge_vn,
       const uint32_t* check_offsets)
       : block_length_(block_length),
@@ -23,6 +24,7 @@ class CppEgdbfDecoder {
         alpha_(alpha),
         delta_(delta),
         momentum_length_(momentum_length),
+        use_mean_threshold_(use_mean_threshold),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         channel_signs_(block_length),
@@ -32,7 +34,10 @@ class CppEgdbfDecoder {
         edge_energies_(check_offsets[n_checks]),
         ages_(momentum_length ? check_offsets[n_checks] : 0),
         incoming_sums_(block_length),
-        posterior_scores_(block_length) {
+        posterior_scores_(block_length),
+        variable_degrees_(block_length, 0),
+        bit_energy_sums_(block_length) {
+    for (uint32_t variable : edge_vn_) ++variable_degrees_[variable];
     if (momentum_length_) {
       rho_.assign(rho, rho + momentum_length_);
       // rho[L] is used before an edge message has changed for the first time.
@@ -116,6 +121,9 @@ class CppEgdbfDecoder {
   template <typename Float>
   void UpdateVariableMessages(const Float* input) {
     double minimum_energy = std::numeric_limits<double>::infinity();
+    if (use_mean_threshold_) {
+      std::fill(bit_energy_sums_.begin(), bit_energy_sums_.end(), 0.0);
+    }
     for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
       const uint32_t variable = edge_vn_[edge];
       const double extrinsic_score =
@@ -128,7 +136,19 @@ class CppEgdbfDecoder {
         energy += rho_[ages_[edge] - 1];
       }
       edge_energies_[edge] = energy;
-      minimum_energy = std::min(minimum_energy, energy);
+      if (use_mean_threshold_) {
+        bit_energy_sums_[variable] += energy;
+      } else {
+        minimum_energy = std::min(minimum_energy, energy);
+      }
+    }
+
+    if (use_mean_threshold_) {
+      for (uint32_t variable = 0; variable < block_length_; ++variable) {
+        minimum_energy = std::min(
+            minimum_energy,
+            bit_energy_sums_[variable] / variable_degrees_[variable]);
+      }
     }
 
     const double threshold = minimum_energy + delta_;
@@ -153,6 +173,7 @@ class CppEgdbfDecoder {
   double alpha_;
   double delta_;
   uint32_t momentum_length_;
+  bool use_mean_threshold_;
   std::vector<double> rho_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
@@ -164,6 +185,8 @@ class CppEgdbfDecoder {
   std::vector<uint32_t> ages_;
   std::vector<double> incoming_sums_;
   std::vector<double> posterior_scores_;
+  std::vector<uint32_t> variable_degrees_;
+  std::vector<double> bit_energy_sums_;
 };
 
 extern "C" void* cpp_egdbf_create(
@@ -185,6 +208,34 @@ extern "C" void* cpp_egdbf_create(
         delta,
         rho,
         momentum_length,
+        false,
+        edge_vn,
+        check_offsets);
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+extern "C" void* cpp_egdbf_v2_create(
+    uint32_t block_length,
+    uint32_t n_checks,
+    uint32_t n_iterations,
+    double alpha,
+    double delta,
+    const double* rho,
+    uint32_t momentum_length,
+    const uint32_t* edge_vn,
+    const uint32_t* check_offsets) {
+  try {
+    return new CppEgdbfDecoder(
+        block_length,
+        n_checks,
+        n_iterations,
+        alpha,
+        delta,
+        rho,
+        momentum_length,
+        true,
         edge_vn,
         check_offsets);
   } catch (...) {

@@ -67,8 +67,7 @@ def load_library():
         flags="C_CONTIGUOUS",
     )
 
-    library.cpp_egdbf_create.restype = ctypes.c_void_p
-    library.cpp_egdbf_create.argtypes = [
+    create_argtypes = [
         ctypes.c_uint32,
         ctypes.c_uint32,
         ctypes.c_uint32,
@@ -79,6 +78,10 @@ def load_library():
         uint32_array,
         uint32_array,
     ]
+    for name in ("cpp_egdbf_create", "cpp_egdbf_v2_create"):
+        create = getattr(library, name)
+        create.restype = ctypes.c_void_p
+        create.argtypes = create_argtypes
     library.cpp_egdbf_decode_float32.restype = ctypes.c_uint32
     library.cpp_egdbf_decode_float32.argtypes = [
         ctypes.c_void_p,
@@ -99,6 +102,8 @@ def load_library():
 class CppBinLdpcEgdbfDecoder(BinLdpcEgdbfDecoder):
     """C++ implementation of the E-GDBF decoder."""
 
+    _create_function = "cpp_egdbf_create"
+
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.edge_vn = np.ascontiguousarray(self.edge_vn, dtype=np.uint32)
@@ -112,7 +117,7 @@ class CppBinLdpcEgdbfDecoder(BinLdpcEgdbfDecoder):
         )
 
         self._library = load_library()
-        self._decoder = self._library.cpp_egdbf_create(
+        self._decoder = getattr(self._library, self._create_function)(
             self.block_length,
             self.n_checks,
             self.n_iterations,

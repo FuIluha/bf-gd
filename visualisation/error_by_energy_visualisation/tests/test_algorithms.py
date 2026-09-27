@@ -8,6 +8,9 @@ from ldpc_py.bin_ldpc_ftgdbf import BinLdpcFtgdbfDecoder
 from ldpc_py.bin_ldpc_gdms import BinLdpcGdmsDecoder
 from ldpc_py.bin_ldpc_egdbf import BinLdpcEgdbfDecoder
 from ldpc_py.cpp_bin_ldpc_egdbf import CppBinLdpcEgdbfDecoder
+from ldpc_py.bin_ldpc_egdbf_v2 import BinLdpcEgdbfV2Decoder
+from ldpc_py.cpp_bin_ldpc_egdbf_v2 import CppBinLdpcEgdbfV2Decoder
+from ldpc_py.decoder_factory import create_decoder
 from ldpc_py.bin_ldpc_pmgdbf import BinLdpcPmgdbfDecoder
 from ldpc_py.bin_ldpc_tgdbf import BinLdpcTgdbfDecoder
 
@@ -225,7 +228,7 @@ class DecoderTests(unittest.TestCase):
     def test_egdbf_threshold_matches_scalar_reference(self):
         edge_cn, edge_vn = np.nonzero(PCM)
 
-        def reference(received, alpha, delta, rho, iterations):
+        def reference(received, alpha, delta, rho, iterations, mean_threshold):
             channel = np.where(received >= 0, 1, -1)
             q = channel[edge_vn].copy()
             ages = np.full(len(q), len(rho) + 1, dtype=int)
@@ -250,12 +253,24 @@ class DecoderTests(unittest.TestCase):
                     )) + (rho[ages[edge] - 1] if rho and 1 <= ages[edge] <= len(rho) else 0)
                     for edge, bit in enumerate(edge_vn)
                 ])
-                flipped = energies <= min(energies) + delta
+                if mean_threshold:
+                    minimum = min(
+                        np.mean(energies[edge_vn == bit])
+                        for bit in range(len(received))
+                    )
+                else:
+                    minimum = min(energies)
+                flipped = energies <= minimum + delta
                 q[flipped] *= -1
                 if rho:
                     ages[flipped] = 0
 
-        for decoder_type in (BinLdpcEgdbfDecoder, CppBinLdpcEgdbfDecoder):
+        for decoder_type, mean_threshold in (
+            (BinLdpcEgdbfDecoder, False),
+            (CppBinLdpcEgdbfDecoder, False),
+            (BinLdpcEgdbfV2Decoder, True),
+            (CppBinLdpcEgdbfV2Decoder, True),
+        ):
             for params in (
                 {"L": 0, "rho": [], "delta": 0.0},
                 {"L": 3, "rho": [0.5, 0.25, 0.1], "delta": 0.4},
@@ -270,11 +285,32 @@ class DecoderTests(unittest.TestCase):
                         output = np.empty_like(received)
                         actual_iterations = decoder.decode(received, output)
                         expected_iterations, expected = reference(
-                            received, 1.8, params["delta"], params["rho"], 5,
+                            received, 1.8, params["delta"], params["rho"],
+                            5, mean_threshold,
                         )
                         self.assertGreater(actual_iterations, 0)
                         self.assertEqual(actual_iterations, expected_iterations)
                         np.testing.assert_array_equal(output, expected)
+
+    def test_egdbf_v2_threshold_uses_bit_means(self):
+        common = dict(
+            pcm=PCM, block_length=PCM.shape[1], n_checks=PCM.shape[0],
+            n_iterations=1, is_systematic=False, alpha=1.8,
+            delta=0.25, L=0, rho=[],
+        )
+        v1 = BinLdpcEgdbfDecoder(None, **common)
+        v2 = BinLdpcEgdbfV2Decoder(None, **common)
+        energies = np.full(v1.edges_count, 4.0)
+        energies[np.flatnonzero(v1.edge_vn == 0)] = [-4.0, 4.0]
+        energies[np.flatnonzero(v1.edge_vn == 1)] = [-2.0, -2.0]
+        self.assertEqual(v1.energy_threshold(energies), -3.75)
+        self.assertEqual(v2.energy_threshold(energies), -1.75)
+
+        for algorithm, decoder_type in (
+            ("edge-wise gradient descent bit-flipping v2", BinLdpcEgdbfV2Decoder),
+            ("cpp edge-wise gradient descent bit-flipping v2", CppBinLdpcEgdbfV2Decoder),
+        ):
+            self.assertIsInstance(create_decoder(algorithm, None, **common), decoder_type)
 
     def test_egdbf_python_and_cpp_agree_with_momentum(self):
         common = dict(

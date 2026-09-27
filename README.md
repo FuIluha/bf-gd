@@ -85,6 +85,26 @@ The experiment JSON is a positional argument. To select another config or port:
 DASHBOARD_PORT=8890 ./run.sh experiments/experiment.json
 ```
 
+## E-GDBF V1 hyperparameter search
+
+For the C++ E-GDBF V1 decoder, submit the existing tuner runner on the server:
+
+```console
+sbatch tune_egdbf.sh
+```
+
+The default staged search screens 2,048 combinations of `alpha`, `delta`, and
+all seven `rho` entries on 2,000 common channel frames each. It then generates
+coordinate neighbors of the best 24 sets at half-step resolution and evaluates
+each on 5,000 fresh common frames. The best eight are compared on another
+common sample. The final sample
+grows until the best set has at least 500 frame errors or reaches the
+10,000,000-frame cap. The selected parameters are then checked on a separate
+sample, also aiming for 500 errors. Profiles include both monotone and
+unrestricted `rho` vectors and the `L=0` case. Each stage writes results to
+`params_cpp_egdbf.jsonl` and the current best to `params_cpp_egdbf.txt`.
+Use `--mode grid` for the earlier Cartesian two-level-profile search.
+
 ## EPMGDBF hyperparameter search
 
 Search the scalar EPMGDBF parameters at SNR 0.5 dB:

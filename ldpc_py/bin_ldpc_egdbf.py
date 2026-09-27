@@ -48,6 +48,7 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
         )
         if np.any(variable_degrees == 0):
             raise ValueError("E-GDBF does not support degree-zero variable nodes")
+        self.variable_degrees = variable_degrees
 
     def bpsk_syndrome(self, x):
         """Return parity-check products for one hard word."""
@@ -96,6 +97,10 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
             energy += self.rho[ages - 1]
         return energy
 
+    def energy_threshold(self, energies):
+        """V1: threshold relative to the least energetic edge."""
+        return np.min(energies) + self.delta
+
     @staticmethod
     def hard_sign(values, previous):
         """Quantize to +/-1, retaining the previous sign on an exact tie."""
@@ -137,7 +142,7 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
                 incoming,
                 ages,
             )
-            flip = energies <= np.min(energies) + self.delta
+            flip = energies <= self.energy_threshold(energies)
             variable_messages[flip] *= -1
             if self.L:
                 ages[flip] = 0
