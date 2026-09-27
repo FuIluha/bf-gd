@@ -100,6 +100,22 @@ disabled (`L=0, rho=[]`); the experiment JSON is not changed. Results go to
 Use `--snr`, `--alphas`, `--deltas`, `--max-errors`, and `--trials` to change
 the search.
 
+## PMGDBF hyperparameter search
+
+For the PMGDBF comparison at 0.8 dB, submit:
+
+```console
+sbatch tune_pmgdbf.sh
+```
+
+The tuner searches the same 19 alpha and 21 delta values as E-GDBF, with
+`p` in `0.8, 0.9, 1.0` (1,197 parameter sets). Every set uses `L=0, rho=[]`
+and runs until 50 frame errors or two million trials. Results are written to
+`params_pmgdbf_no_momentum.jsonl`; the current best is in
+`params_pmgdbf_no_momentum.txt`. Use `--max-errors 50` for the E-GDBF run
+to compare both searches with the same stopping target. Override the PMGDBF
+grid with `--alphas`, `--deltas`, and `--probabilities` if needed.
+
 ## EPMGDBF hyperparameter search
 
 Search the scalar EPMGDBF parameters at SNR 0.5 dB:
