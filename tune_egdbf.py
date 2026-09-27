@@ -74,6 +74,11 @@ def parse_args():
         default=DEFAULT_ALPHAS,
     )
     parser.add_argument(
+        "--deltas",
+        type=comma_separated_floats,
+        help="inversion threshold offsets; defaults to delta from the config",
+    )
+    parser.add_argument(
         "--rho",
         type=comma_separated_floats,
         action="append",
@@ -117,6 +122,10 @@ def validate_args(args):
         raise ValueError("--max-configs must be positive")
     if any(not np.isfinite(value) or value <= 0 for value in args.alphas):
         raise ValueError("all alphas must be finite and positive")
+    if args.deltas is not None and any(
+        not np.isfinite(value) or value < 0 for value in args.deltas
+    ):
+        raise ValueError("all deltas must be finite and non-negative")
     if any(
         not np.isfinite(value) or value < 0
         for value in args.rho_early_values + args.rho_late_values
@@ -142,6 +151,8 @@ def load_base_experiment(config_path):
 def generated_rho_profiles(args, momentum_length):
     if args.rho_profiles:
         return args.rho_profiles
+    if momentum_length == 0:
+        return [()]
     if any(split > momentum_length for split in args.rho_splits):
         raise ValueError("rho splits must not exceed the configured L")
 
@@ -164,18 +175,23 @@ def generated_rho_profiles(args, momentum_length):
 
 def parameter_grid(args, base_params):
     rho_profiles = generated_rho_profiles(args, int(base_params["L"]))
+    base_delta = float(base_params.get("delta", 0.0))
+    delta_values = args.deltas if args.deltas is not None else (base_delta,)
     baseline = {
         "alpha": float(base_params["alpha"]),
+        "delta": base_delta,
         "rho": [float(value) for value in base_params["rho"]],
         "L": int(base_params["L"]),
     }
     candidates = [baseline]
-    for rho, alpha in itertools.product(
+    for rho, alpha, delta in itertools.product(
         rho_profiles,
         args.alphas,
+        delta_values,
     ):
         candidates.append({
             "alpha": float(alpha),
+            "delta": float(delta),
             "rho": [float(value) for value in rho],
             "L": len(rho),
         })

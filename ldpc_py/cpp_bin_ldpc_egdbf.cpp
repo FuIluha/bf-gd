@@ -1,9 +1,10 @@
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <new>
 #include <vector>
 
-// Hard message passing with persistent variable-to-check signs.
+// Thresholded hard message passing with persistent edge signs.
 class CppEgdbfDecoder {
  public:
   CppEgdbfDecoder(
@@ -11,6 +12,7 @@ class CppEgdbfDecoder {
       uint32_t n_checks,
       uint32_t n_iterations,
       double alpha,
+      double delta,
       const double* rho,
       uint32_t momentum_length,
       const uint32_t* edge_vn,
@@ -19,20 +21,23 @@ class CppEgdbfDecoder {
         n_checks_(n_checks),
         n_iterations_(n_iterations),
         alpha_(alpha),
+        delta_(delta),
         momentum_length_(momentum_length),
-        rho_(rho, rho + momentum_length),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         channel_signs_(block_length),
         hard_word_(block_length),
         variable_messages_(check_offsets[n_checks]),
-        new_variable_messages_(check_offsets[n_checks]),
         check_messages_(check_offsets[n_checks]),
-        ages_(check_offsets[n_checks]),
+        edge_energies_(check_offsets[n_checks]),
+        ages_(momentum_length ? check_offsets[n_checks] : 0),
         incoming_sums_(block_length),
-        posterior_gradients_(block_length) {
-    // rho[L] is used before an edge message has changed for the first time.
-    rho_.push_back(0.0);
+        posterior_scores_(block_length) {
+    if (momentum_length_) {
+      rho_.assign(rho, rho + momentum_length_);
+      // rho[L] is used before an edge message has changed for the first time.
+      rho_.push_back(0.0);
+    }
   }
 
   template <typename Float>
@@ -42,7 +47,7 @@ class CppEgdbfDecoder {
     }
     for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
       variable_messages_[edge] = channel_signs_[edge_vn_[edge]];
-      ages_[edge] = momentum_length_ + 1;
+      if (momentum_length_) ages_[edge] = momentum_length_ + 1;
     }
 
     for (uint32_t iteration = 0; iteration < n_iterations_; ++iteration) {
@@ -83,12 +88,12 @@ class CppEgdbfDecoder {
   template <typename Float>
   void CalculatePosterior(const Float* input) {
     for (uint32_t variable = 0; variable < block_length_; ++variable) {
-      posterior_gradients_[variable] =
+      posterior_scores_[variable] =
           alpha_ * static_cast<double>(input[variable]) +
           incoming_sums_[variable];
-      if (posterior_gradients_[variable] > 0.0) {
+      if (posterior_scores_[variable] > 0.0) {
         hard_word_[variable] = 1;
-      } else if (posterior_gradients_[variable] < 0.0) {
+      } else if (posterior_scores_[variable] < 0.0) {
         hard_word_[variable] = -1;
       } else {
         hard_word_[variable] = channel_signs_[variable];
@@ -110,28 +115,28 @@ class CppEgdbfDecoder {
 
   template <typename Float>
   void UpdateVariableMessages(const Float* input) {
+    double minimum_energy = std::numeric_limits<double>::infinity();
     for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
-      ages_[edge] = std::min(ages_[edge], momentum_length_) + 1;
       const uint32_t variable = edge_vn_[edge];
-      const double extrinsic_gradient =
+      const double extrinsic_score =
           alpha_ * static_cast<double>(input[variable]) +
           incoming_sums_[variable] -
-          static_cast<double>(check_messages_[edge]) +
-          rho_[ages_[edge] - 1] * variable_messages_[edge];
-      if (extrinsic_gradient > 0.0) {
-        new_variable_messages_[edge] = 1;
-      } else if (extrinsic_gradient < 0.0) {
-        new_variable_messages_[edge] = -1;
-      } else {
-        new_variable_messages_[edge] = variable_messages_[edge];
+          static_cast<double>(check_messages_[edge]);
+      double energy = variable_messages_[edge] * extrinsic_score;
+      if (momentum_length_) {
+        ages_[edge] = std::min(ages_[edge], momentum_length_) + 1;
+        energy += rho_[ages_[edge] - 1];
       }
+      edge_energies_[edge] = energy;
+      minimum_energy = std::min(minimum_energy, energy);
     }
 
+    const double threshold = minimum_energy + delta_;
     for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
-      if (new_variable_messages_[edge] != variable_messages_[edge]) {
-        ages_[edge] = 0;
+      if (edge_energies_[edge] <= threshold) {
+        variable_messages_[edge] = -variable_messages_[edge];
+        if (momentum_length_) ages_[edge] = 0;
       }
-      variable_messages_[edge] = new_variable_messages_[edge];
     }
   }
 
@@ -146,6 +151,7 @@ class CppEgdbfDecoder {
   uint32_t n_checks_;
   uint32_t n_iterations_;
   double alpha_;
+  double delta_;
   uint32_t momentum_length_;
   std::vector<double> rho_;
   std::vector<uint32_t> edge_vn_;
@@ -153,11 +159,11 @@ class CppEgdbfDecoder {
   std::vector<int8_t> channel_signs_;
   std::vector<int8_t> hard_word_;
   std::vector<int8_t> variable_messages_;
-  std::vector<int8_t> new_variable_messages_;
   std::vector<int8_t> check_messages_;
+  std::vector<double> edge_energies_;
   std::vector<uint32_t> ages_;
   std::vector<double> incoming_sums_;
-  std::vector<double> posterior_gradients_;
+  std::vector<double> posterior_scores_;
 };
 
 extern "C" void* cpp_egdbf_create(
@@ -165,6 +171,7 @@ extern "C" void* cpp_egdbf_create(
     uint32_t n_checks,
     uint32_t n_iterations,
     double alpha,
+    double delta,
     const double* rho,
     uint32_t momentum_length,
     const uint32_t* edge_vn,
@@ -175,6 +182,7 @@ extern "C" void* cpp_egdbf_create(
         n_checks,
         n_iterations,
         alpha,
+        delta,
         rho,
         momentum_length,
         edge_vn,
