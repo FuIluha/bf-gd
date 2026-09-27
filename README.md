@@ -105,6 +105,36 @@ unrestricted `rho` vectors and the `L=0` case. Each stage writes results to
 `params_cpp_egdbf.jsonl` and the current best to `params_cpp_egdbf.txt`.
 Use `--mode grid` for the earlier Cartesian two-level-profile search.
 
+To search E-GDBF V1 at 0.8 dB with momentum disabled, use the existing runner:
+
+```console
+sbatch tune_egdbf.sh --no-momentum --snr 0.8 \
+  --alphas "$(seq -s, 0.2 0.1 2.0)" \
+  --screen-trials 20000 --refine-trials 100000 \
+  --trials 2000000 --final-errors 500 \
+  --output params_cpp_egdbf_no_momentum_0p8.txt
+```
+
+This searches every alpha–delta pair on the coarse grid (delta 0 to 2 in
+steps of 0.1), then refines the leading pairs by 0.05. `--no-momentum`
+sets `L=0, rho=[]` for every candidate without changing the experiment JSON.
+The result file and its `.jsonl` log are separate from the default search.
+
+To diagnose failed E-GDBF V1 frames locally without changing the simulation
+cache, run:
+
+```console
+python tune_egdbf.py --mode diagnose --workers 8
+```
+
+The default captures 100 actual decoding failures at each of 0.3, 0.5 and
+0.8 dB with a fixed seed. It replays each frame in Python, checks the C++
+result, and tries the same parameters at 600 and 1200 iterations. The frame
+vectors and iteration traces are saved to `data/egdbf_v1_diagnosis.npz`; the
+summary is in `data/egdbf_v1_diagnosis.json`. Re-analyze saved frames with
+`python tune_egdbf.py --mode diagnose --replay-only`. These files are separate
+from the ordinary FER simulation data.
+
 ## EPMGDBF hyperparameter search
 
 Search the scalar EPMGDBF parameters at SNR 0.5 dB:
