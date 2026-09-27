@@ -104,14 +104,8 @@ def load_base_experiment(config_path):
     return experiment, config.get("simulation", {})
 
 
-def parameter_grid(args, base_params):
-    candidates = [{
-        "alpha": float(base_params["alpha"]),
-        "delta": float(base_params.get("delta", 0.0)),
-        "p": float(base_params["p"]),
-        "rho": [],
-        "L": 0,
-    }]
+def parameter_grid(args):
+    candidates = []
     for alpha, delta, probability in itertools.product(
         args.alphas, args.deltas, args.probabilities,
     ):
@@ -217,10 +211,7 @@ def main():
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
-    candidates = parameter_grid(
-        args,
-        base_experiment["codec"]["decoder_params"],
-    )
+    candidates = parameter_grid(args)
     if args.max_configs is not None:
         candidates = candidates[:args.max_configs]
 

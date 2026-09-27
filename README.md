@@ -115,6 +115,7 @@ and runs until 50 frame errors or two million trials. Results are written to
 `params_pmgdbf_no_momentum.txt`. Use `--max-errors 50` for the E-GDBF run
 to compare both searches with the same stopping target. Override the PMGDBF
 grid with `--alphas`, `--deltas`, and `--probabilities` if needed.
+For example, `sbatch tune_pmgdbf.sh --probabilities 1` evaluates only `p=1`.
 
 ## EPMGDBF hyperparameter search
 
