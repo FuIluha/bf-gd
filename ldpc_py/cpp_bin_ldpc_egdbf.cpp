@@ -13,6 +13,7 @@ class CppEgdbfDecoder {
       uint32_t n_iterations,
       double alpha,
       double delta,
+      double probability,
       const double* rho,
       uint32_t momentum_length,
       bool use_mean_threshold,
@@ -23,6 +24,7 @@ class CppEgdbfDecoder {
         n_iterations_(n_iterations),
         alpha_(alpha),
         delta_(delta),
+        probability_(probability),
         momentum_length_(momentum_length),
         use_mean_threshold_(use_mean_threshold),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
@@ -46,7 +48,7 @@ class CppEgdbfDecoder {
   }
 
   template <typename Float>
-  uint32_t Decode(const Float* input, Float* output) {
+  uint32_t Decode(const Float* input, Float* output, uint64_t seed) {
     for (uint32_t variable = 0; variable < block_length_; ++variable) {
       channel_signs_[variable] = input[variable] >= 0 ? 1 : -1;
     }
@@ -63,7 +65,7 @@ class CppEgdbfDecoder {
         return iteration;
       }
 
-      UpdateVariableMessages(input);
+      UpdateVariableMessages(input, iteration, seed);
     }
 
     CalculateCheckMessages();
@@ -119,7 +121,8 @@ class CppEgdbfDecoder {
   }
 
   template <typename Float>
-  void UpdateVariableMessages(const Float* input) {
+  void UpdateVariableMessages(const Float* input, uint32_t iteration,
+                              uint64_t seed) {
     double minimum_energy = std::numeric_limits<double>::infinity();
     if (use_mean_threshold_) {
       std::fill(bit_energy_sums_.begin(), bit_energy_sums_.end(), 0.0);
@@ -153,11 +156,25 @@ class CppEgdbfDecoder {
 
     const double threshold = minimum_energy + delta_;
     for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
-      if (edge_energies_[edge] <= threshold) {
+      if (edge_energies_[edge] <= threshold &&
+          FlipAccepted(seed, iteration, edge)) {
         variable_messages_[edge] = -variable_messages_[edge];
         if (momentum_length_) ages_[edge] = 0;
       }
     }
+  }
+
+  bool FlipAccepted(uint64_t seed, uint32_t iteration, uint32_t edge) const {
+    if (probability_ == 1.0) return true;
+    if (probability_ == 0.0) return false;
+    const uint64_t counter =
+        static_cast<uint64_t>(iteration) * edge_vn_.size() + edge + 1;
+    uint64_t value = seed + 0x9E3779B97F4A7C15ULL * counter;
+    value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    value = (value ^ (value >> 27)) * 0x94D049BB133111EBULL;
+    value ^= value >> 31;
+    const double uniform = static_cast<double>(value >> 11) * 0x1.0p-53;
+    return uniform < probability_;
   }
 
   template <typename Float>
@@ -172,6 +189,7 @@ class CppEgdbfDecoder {
   uint32_t n_iterations_;
   double alpha_;
   double delta_;
+  double probability_;
   uint32_t momentum_length_;
   bool use_mean_threshold_;
   std::vector<double> rho_;
@@ -195,6 +213,7 @@ extern "C" void* cpp_egdbf_create(
     uint32_t n_iterations,
     double alpha,
     double delta,
+    double probability,
     const double* rho,
     uint32_t momentum_length,
     const uint32_t* edge_vn,
@@ -206,6 +225,7 @@ extern "C" void* cpp_egdbf_create(
         n_iterations,
         alpha,
         delta,
+        probability,
         rho,
         momentum_length,
         false,
@@ -222,6 +242,7 @@ extern "C" void* cpp_egdbf_v2_create(
     uint32_t n_iterations,
     double alpha,
     double delta,
+    double probability,
     const double* rho,
     uint32_t momentum_length,
     const uint32_t* edge_vn,
@@ -233,6 +254,7 @@ extern "C" void* cpp_egdbf_v2_create(
         n_iterations,
         alpha,
         delta,
+        probability,
         rho,
         momentum_length,
         true,
@@ -246,15 +268,17 @@ extern "C" void* cpp_egdbf_v2_create(
 extern "C" uint32_t cpp_egdbf_decode_float32(
     void* decoder,
     const float* input,
-    float* output) {
-  return static_cast<CppEgdbfDecoder*>(decoder)->Decode(input, output);
+    float* output,
+    uint64_t seed) {
+  return static_cast<CppEgdbfDecoder*>(decoder)->Decode(input, output, seed);
 }
 
 extern "C" uint32_t cpp_egdbf_decode_float64(
     void* decoder,
     const double* input,
-    double* output) {
-  return static_cast<CppEgdbfDecoder*>(decoder)->Decode(input, output);
+    double* output,
+    uint64_t seed) {
+  return static_cast<CppEgdbfDecoder*>(decoder)->Decode(input, output, seed);
 }
 
 extern "C" void cpp_egdbf_free(void* decoder) {
