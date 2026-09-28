@@ -11,10 +11,6 @@ import numpy as np
 from ldpc_py.cpp_bin_ldpc_gdms import lib_compile as gdms_compile
 from simulator_awgn_python.tools import load_json
 from tune_gdms import (
-    DEFAULT_ALPHAS,
-    DEFAULT_L2,
-    DEFAULT_LEARNING_RATE_DECAYS,
-    DEFAULT_LEARNING_RATES,
     comma_separated_floats,
     default_workers,
     evaluate_candidate,
@@ -29,6 +25,17 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_egdbf_v4.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf_v4.txt"
 V4_ALGORITHM = "cpp edge-wise gradient descent bit-flipping v4"
+
+# 15 * 11 * 26 * 16 = 68 640 combinations (plus the config baseline).
+DEFAULT_LEARNING_RATES = tuple(np.round(np.arange(0.02, 0.301, 0.02), 2))
+# Zero plus a log-spaced grid: over 50 iterations the rate falls by
+# sqrt(1 + 50 * decay), i.e. from ~1.02x at 0.001 to ~7x at 1.
+DEFAULT_LEARNING_RATE_DECAYS = (0.0,) + tuple(
+    float(f"{value:.2g}") for value in np.geomspace(0.001, 1.0, 10)
+)
+DEFAULT_ALPHAS = tuple(np.round(np.arange(0.5, 3.001, 0.1), 2))
+DEFAULT_L2 = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0,
+              2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0)
 
 
 def parse_args():
