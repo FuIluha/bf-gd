@@ -79,7 +79,7 @@ def load_library():
         uint32_array,
         uint32_array,
     ]
-    for name in ("cpp_egdbf_create", "cpp_egdbf_v2_create"):
+    for name in ("cpp_egdbf_create", "cpp_egdbf_v2_create", "cpp_egdbf_v3_create"):
         create = getattr(library, name)
         create.restype = ctypes.c_void_p
         create.argtypes = create_argtypes
@@ -125,7 +125,7 @@ class CppBinLdpcEgdbfDecoder(BinLdpcEgdbfDecoder):
             self.n_checks,
             self.n_iterations,
             self.alpha,
-            self.delta,
+            self.rule_parameter(),
             self.p,
             self.rho_values,
             self.L,
@@ -134,6 +134,10 @@ class CppBinLdpcEgdbfDecoder(BinLdpcEgdbfDecoder):
         )
         if not self._decoder:
             raise RuntimeError("Failed to create C++ E-GDBF decoder")
+
+    def rule_parameter(self):
+        """Value passed to C++ as delta (V1/V2) or eta (V3)."""
+        return self.delta
 
     def decode(self, llr_in, llr_out, rng=None):
         seed = 0

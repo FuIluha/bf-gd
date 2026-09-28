@@ -104,6 +104,24 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
         """V1: threshold relative to the least energetic edge."""
         return np.min(energies) + self.delta
 
+    def flip_candidates(
+        self,
+        y,
+        variable_messages,
+        check_messages,
+        incoming_sums,
+        ages,
+    ):
+        """Edges whose message changes sign before the p-coin."""
+        energies = self.edge_energies(
+            y,
+            variable_messages,
+            check_messages,
+            incoming_sums,
+            ages,
+        )
+        return energies <= self.energy_threshold(energies)
+
     @staticmethod
     def hard_sign(values, previous):
         """Quantize to +/-1, retaining the previous sign on an exact tie."""
@@ -158,14 +176,13 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
             if self.L:
                 np.minimum(ages, self.L, out=ages)
                 ages += 1
-            energies = self.edge_energies(
+            flip = self.flip_candidates(
                 y,
                 variable_messages,
                 check_messages,
                 incoming,
                 ages,
             )
-            flip = energies <= self.energy_threshold(energies)
             if self.p == 0:
                 flip[:] = False
             elif self.p < 1:
