@@ -26,17 +26,14 @@ DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_egdbf_v4.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf_v4.txt"
 V4_ALGORITHM = "cpp edge-wise gradient descent bit-flipping v4"
 
-# 23 * 11 * 26 * 9 = 59 202 combinations (plus the config baseline).
-DEFAULT_LEARNING_RATES = (0.01, 0.02, 0.05) + tuple(
-    np.round(np.arange(0.1, 2.001, 0.1), 2)
-)
-# Zero plus a log-spaced grid: over 50 iterations the rate falls by
-# sqrt(1 + 50 * decay), i.e. from ~1.02x at 0.001 to ~7x at 1.
-DEFAULT_LEARNING_RATE_DECAYS = (0.0,) + tuple(
-    float(f"{value:.2g}") for value in np.geomspace(0.001, 1.0, 10)
-)
-DEFAULT_ALPHAS = tuple(np.round(np.arange(0.5, 3.001, 0.1), 2))
-DEFAULT_L2 = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)
+# Second pass around the first-pass optimum
+# (lr 0.2, decay 0.0022, alpha 1.5, l2 2.0 at the old l2 limit):
+# 19 * 6 * 11 * 17 = 21 318 combinations (plus the config baseline).
+DEFAULT_LEARNING_RATES = tuple(np.round(np.arange(0.05, 0.5001, 0.025), 3))
+# Log-spaced; over 50 iterations the rate falls by sqrt(1 + 50 * decay).
+DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.001, 0.0022, 0.0046, 0.01, 0.022)
+DEFAULT_ALPHAS = tuple(np.round(np.arange(1.0, 2.001, 0.1), 2))
+DEFAULT_L2 = tuple(np.round(np.arange(1.0, 5.001, 0.25), 2))
 
 
 def parse_args():
@@ -49,7 +46,7 @@ def parse_args():
     parser.add_argument("-c", "--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--snr", type=float, default=0.25)
     parser.add_argument("--trials", type=int, default=2_000_000)
-    parser.add_argument("--max-errors", type=int, default=50)
+    parser.add_argument("--max-errors", type=int, default=100)
     parser.add_argument("--workers", type=int)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
