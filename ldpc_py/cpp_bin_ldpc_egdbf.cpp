@@ -4,6 +4,13 @@
 #include <new>
 #include <vector>
 
+// How edge messages are updated in every iteration.
+enum class ThresholdMode {
+  kWordMinimum,     // V1: minimum edge energy of the word plus delta.
+  kBitMeanMinimum,  // V2: minimum mean edge energy of a bit plus delta.
+  kGradientStep,    // V3: q = sign(q + eta * G[n->m]), eta passed as delta.
+};
+
 // Thresholded hard message passing with persistent edge signs.
 class CppEgdbfDecoder {
  public:
@@ -16,7 +23,7 @@ class CppEgdbfDecoder {
       double probability,
       const double* rho,
       uint32_t momentum_length,
-      bool use_mean_threshold,
+      ThresholdMode threshold_mode,
       const uint32_t* edge_vn,
       const uint32_t* check_offsets)
       : block_length_(block_length),
@@ -26,7 +33,7 @@ class CppEgdbfDecoder {
         delta_(delta),
         probability_(probability),
         momentum_length_(momentum_length),
-        use_mean_threshold_(use_mean_threshold),
+        threshold_mode_(threshold_mode),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         channel_signs_(block_length),
@@ -123,8 +130,14 @@ class CppEgdbfDecoder {
   template <typename Float>
   void UpdateVariableMessages(const Float* input, uint32_t iteration,
                               uint64_t seed) {
+    if (threshold_mode_ == ThresholdMode::kGradientStep) {
+      StepVariableMessages(input, iteration, seed);
+      return;
+    }
+    const bool use_mean_threshold =
+        threshold_mode_ == ThresholdMode::kBitMeanMinimum;
     double minimum_energy = std::numeric_limits<double>::infinity();
-    if (use_mean_threshold_) {
+    if (use_mean_threshold) {
       std::fill(bit_energy_sums_.begin(), bit_energy_sums_.end(), 0.0);
     }
     for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
@@ -139,14 +152,14 @@ class CppEgdbfDecoder {
         energy += rho_[ages_[edge] - 1];
       }
       edge_energies_[edge] = energy;
-      if (use_mean_threshold_) {
+      if (use_mean_threshold) {
         bit_energy_sums_[variable] += energy;
       } else {
         minimum_energy = std::min(minimum_energy, energy);
       }
     }
 
-    if (use_mean_threshold_) {
+    if (use_mean_threshold) {
       for (uint32_t variable = 0; variable < block_length_; ++variable) {
         minimum_energy = std::min(
             minimum_energy,
@@ -160,6 +173,26 @@ class CppEgdbfDecoder {
           FlipAccepted(seed, iteration, edge)) {
         variable_messages_[edge] = -variable_messages_[edge];
         if (momentum_length_) ages_[edge] = 0;
+      }
+    }
+  }
+
+  // V3: round q + eta * G[n->m] to +/-1; a zero result keeps q.
+  template <typename Float>
+  void StepVariableMessages(const Float* input, uint32_t iteration,
+                            uint64_t seed) {
+    const double eta = delta_;
+    for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
+      const uint32_t variable = edge_vn_[edge];
+      const double extrinsic_score =
+          alpha_ * static_cast<double>(input[variable]) +
+          incoming_sums_[variable] -
+          static_cast<double>(check_messages_[edge]);
+      const double step_result =
+          variable_messages_[edge] + eta * extrinsic_score;
+      if (variable_messages_[edge] * step_result < 0.0 &&
+          FlipAccepted(seed, iteration, edge)) {
+        variable_messages_[edge] = -variable_messages_[edge];
       }
     }
   }
@@ -191,7 +224,7 @@ class CppEgdbfDecoder {
   double delta_;
   double probability_;
   uint32_t momentum_length_;
-  bool use_mean_threshold_;
+  ThresholdMode threshold_mode_;
   std::vector<double> rho_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
@@ -228,7 +261,7 @@ extern "C" void* cpp_egdbf_create(
         probability,
         rho,
         momentum_length,
-        false,
+        ThresholdMode::kWordMinimum,
         edge_vn,
         check_offsets);
   } catch (...) {
@@ -257,7 +290,36 @@ extern "C" void* cpp_egdbf_v2_create(
         probability,
         rho,
         momentum_length,
-        true,
+        ThresholdMode::kBitMeanMinimum,
+        edge_vn,
+        check_offsets);
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+extern "C" void* cpp_egdbf_v3_create(
+    uint32_t block_length,
+    uint32_t n_checks,
+    uint32_t n_iterations,
+    double alpha,
+    double eta,
+    double probability,
+    const double* rho,
+    uint32_t momentum_length,
+    const uint32_t* edge_vn,
+    const uint32_t* check_offsets) {
+  try {
+    return new CppEgdbfDecoder(
+        block_length,
+        n_checks,
+        n_iterations,
+        alpha,
+        eta,
+        probability,
+        rho,
+        momentum_length,
+        ThresholdMode::kGradientStep,
         edge_vn,
         check_offsets);
   } catch (...) {

@@ -18,9 +18,11 @@ from simulator_awgn_python.tools import load_json
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_egdbf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf.txt"
+V3_ALGORITHM = "cpp edge-wise gradient descent bit-flipping v3"
 
 DEFAULT_ALPHAS = tuple(np.round(np.arange(1.0, 2.001, 0.1), 2))
 DEFAULT_DELTAS = tuple(np.round(np.arange(1.0, 3.001, 0.1), 2))
+DEFAULT_THETAS = tuple(np.round(np.arange(-3.0, 1.001, 0.1), 2))
 DEFAULT_PROBABILITIES = (0.95, 1.0)
 DEFAULT_RHO_VALUES = tuple(np.round(np.arange(0.0, 4.001, 1.0), 2))
 
@@ -65,6 +67,13 @@ def parse_args():
         "--deltas",
         type=comma_separated_floats,
         default=DEFAULT_DELTAS,
+        help="threshold offsets for V1/V2",
+    )
+    parser.add_argument(
+        "--thetas",
+        type=comma_separated_floats,
+        default=DEFAULT_THETAS,
+        help="fixed edge thresholds for V3 (used instead of --deltas)",
     )
     parser.add_argument(
         "--probabilities",
@@ -112,6 +121,8 @@ def validate_args(args):
         raise ValueError("all alphas must be finite and positive")
     if any(not np.isfinite(value) or value < 0 for value in args.deltas):
         raise ValueError("all deltas must be finite and non-negative")
+    if any(not np.isfinite(value) for value in args.thetas):
+        raise ValueError("all thetas must be finite")
     if any(not np.isfinite(value) or not 0 <= value <= 1
            for value in args.probabilities):
         raise ValueError("all probabilities must be finite and in [0, 1]")
@@ -129,6 +140,7 @@ def load_base_experiment(config_path):
     if experiment["codec"].get("algorithm") not in (
         "cpp edge-wise gradient descent bit-flipping",
         "cpp edge-wise gradient descent bit-flipping v2",
+        V3_ALGORITHM,
     ):
         raise ValueError("the selected config must use a C++ E-GDBF decoder")
     return experiment, config.get("simulation", {})
@@ -149,14 +161,19 @@ def rho_profiles(args):
     ))
 
 
-def parameter_grid(args):
+def parameter_grid(args, algorithm):
+    # V3 has a fixed edge threshold theta instead of the offset delta.
+    threshold_name, thresholds = (
+        ("theta", args.thetas) if algorithm == V3_ALGORITHM
+        else ("delta", args.deltas)
+    )
     candidates = []
-    for alpha, delta, probability, rho in itertools.product(
-        args.alphas, args.deltas, args.probabilities, rho_profiles(args),
+    for alpha, threshold, probability, rho in itertools.product(
+        args.alphas, thresholds, args.probabilities, rho_profiles(args),
     ):
         candidates.append({
             "alpha": float(alpha),
-            "delta": float(delta),
+            threshold_name: float(threshold),
             "p": float(probability),
             "rho": list(rho),
             "L": len(rho),
@@ -257,7 +274,7 @@ def main():
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
     egdbf_compile()
-    candidates = parameter_grid(args)
+    candidates = parameter_grid(args, base_experiment["codec"]["algorithm"])
     if args.max_configs is not None:
         candidates = candidates[:args.max_configs]
 
