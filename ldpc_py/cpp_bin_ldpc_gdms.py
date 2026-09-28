@@ -34,6 +34,8 @@ def lib_compile():
                 "-Wextra",
                 "-Werror",
                 "-O3",
+                # Keep a*b + c unfused so results match the Python decoders.
+                "-ffp-contract=off",
                 "-fPIC",
                 "-shared",
                 str(SOURCE_PATH),
@@ -68,18 +70,20 @@ def load_library():
         flags="C_CONTIGUOUS",
     )
 
-    library.cpp_gdms_create.restype = ctypes.c_void_p
-    library.cpp_gdms_create.argtypes = [
-        ctypes.c_uint32,
-        ctypes.c_uint32,
-        ctypes.c_uint32,
-        ctypes.c_double,
-        ctypes.c_double,
-        ctypes.c_double,
-        ctypes.c_double,  # l2
-        uint32_array,
-        uint32_array,
-    ]
+    for name in ("cpp_gdms_create", "cpp_egdbf_v4_create"):
+        create = getattr(library, name)
+        create.restype = ctypes.c_void_p
+        create.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,  # l2
+            uint32_array,
+            uint32_array,
+        ]
     library.cpp_gdms_decode_float32.restype = ctypes.c_uint32
     library.cpp_gdms_decode_float32.argtypes = [
         ctypes.c_void_p,
@@ -99,6 +103,8 @@ def load_library():
 
 class CppBinLdpcGdmsDecoder(BinLdpcDecoderBase):
     """C++ implementation of the GDMS decoder."""
+
+    _create_function = "cpp_gdms_create"
 
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
@@ -125,7 +131,7 @@ class CppBinLdpcGdmsDecoder(BinLdpcDecoderBase):
         )
 
         self._library = load_library()
-        self._decoder = self._library.cpp_gdms_create(
+        self._decoder = getattr(self._library, self._create_function)(
             self.block_length,
             self.n_checks,
             self.n_iterations,
