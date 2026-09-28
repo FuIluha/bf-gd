@@ -28,12 +28,12 @@ V4_ALGORITHM = "cpp edge-wise gradient descent bit-flipping v4"
 
 # Second pass around the first-pass optimum
 # (lr 0.2, decay 0.0022, alpha 1.5, l2 2.0 at the old l2 limit):
-# 19 * 6 * 11 * 17 = 21 318 combinations (plus the config baseline).
+# 19 * 6 * 11 * 21 = 26 334 combinations (plus the config baseline).
 DEFAULT_LEARNING_RATES = tuple(np.round(np.arange(0.05, 0.5001, 0.025), 3))
 # Log-spaced; over 50 iterations the rate falls by sqrt(1 + 50 * decay).
 DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.001, 0.0022, 0.0046, 0.01, 0.022)
 DEFAULT_ALPHAS = tuple(np.round(np.arange(1.0, 2.001, 0.1), 2))
-DEFAULT_L2 = tuple(np.round(np.arange(1.0, 5.001, 0.25), 2))
+DEFAULT_L2 = tuple(np.round(np.arange(3.0, 7.001, 0.2), 2))
 
 
 def parse_args():
