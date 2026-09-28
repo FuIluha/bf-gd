@@ -1,7 +1,6 @@
-"""Grid-search C++ E-GDBF V3 parameters (alpha, eta, beta, p) at one SNR point."""
+"""Grid-search C++ E-GDBF V4 (sign-only GDMS) parameters at one SNR point."""
 
 import argparse
-import itertools
 import json
 import multiprocessing as mp
 import os
@@ -9,33 +8,33 @@ from pathlib import Path
 
 import numpy as np
 
-from ldpc_py.cpp_bin_ldpc_egdbf import lib_compile as egdbf_compile
+from ldpc_py.cpp_bin_ldpc_gdms import lib_compile as gdms_compile
 from simulator_awgn_python.tools import load_json
-from tune_egdbf import (
+from tune_gdms import (
+    DEFAULT_ALPHAS,
+    DEFAULT_L2,
+    DEFAULT_LEARNING_RATE_DECAYS,
+    DEFAULT_LEARNING_RATES,
     comma_separated_floats,
     default_workers,
     evaluate_candidate,
     init_worker,
+    parameter_grid,
     result_score,
     save_best,
 )
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_egdbf_v3.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf_v3.txt"
-V3_ALGORITHM = "cpp edge-wise gradient descent bit-flipping v3"
-
-DEFAULT_ALPHAS = tuple(np.round(np.arange(1.0, 3.001, 0.1), 2))
-DEFAULT_ETAS = tuple(np.round(np.arange(0.2, 5.001, 0.1), 2))
-DEFAULT_BETAS = tuple(np.round(np.arange(0.0, 0.901, 0.1), 2))
-DEFAULT_PROBABILITIES = (0.95, 1.0)
+DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_egdbf_v4.json"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf_v4.txt"
+V4_ALGORITHM = "cpp edge-wise gradient descent bit-flipping v4"
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Search C++ E-GDBF V3 hyperparameters using FER at a fixed SNR. "
+            "Search C++ E-GDBF V4 hyperparameters using FER at a fixed SNR. "
             "Every new best result is saved immediately."
         )
     )
@@ -48,25 +47,21 @@ def parse_args():
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-configs", type=int)
     parser.add_argument(
+        "--learning-rates",
+        type=comma_separated_floats,
+        default=DEFAULT_LEARNING_RATES,
+    )
+    parser.add_argument(
+        "--learning-rate-decays",
+        type=comma_separated_floats,
+        default=DEFAULT_LEARNING_RATE_DECAYS,
+    )
+    parser.add_argument(
         "--alphas",
         type=comma_separated_floats,
         default=DEFAULT_ALPHAS,
     )
-    parser.add_argument(
-        "--etas",
-        type=comma_separated_floats,
-        default=DEFAULT_ETAS,
-    )
-    parser.add_argument(
-        "--betas",
-        type=comma_separated_floats,
-        default=DEFAULT_BETAS,
-    )
-    parser.add_argument(
-        "--probabilities",
-        type=comma_separated_floats,
-        default=DEFAULT_PROBABILITIES,
-    )
+    parser.add_argument("--l2-values", type=comma_separated_floats, default=DEFAULT_L2)
     return parser.parse_args()
 
 
@@ -83,42 +78,22 @@ def validate_args(args):
         raise ValueError("--workers must be positive")
     if args.max_configs is not None and args.max_configs <= 0:
         raise ValueError("--max-configs must be positive")
-    if any(not np.isfinite(value) or value <= 0 for value in args.alphas):
+    if any(not np.isfinite(v) or v <= 0 for v in args.learning_rates):
+        raise ValueError("all learning rates must be finite and positive")
+    if any(not np.isfinite(v) or v < 0 for v in args.learning_rate_decays):
+        raise ValueError("all learning-rate decays must be finite and non-negative")
+    if any(not np.isfinite(v) or v <= 0 for v in args.alphas):
         raise ValueError("all alphas must be finite and positive")
-    if any(not np.isfinite(value) or value <= 0 for value in args.etas):
-        raise ValueError("all etas must be finite and positive")
-    if any(not np.isfinite(value) or not 0 <= value < 1 for value in args.betas):
-        raise ValueError("all betas must be finite and in [0, 1)")
-    if any(not np.isfinite(value) or not 0 <= value <= 1
-           for value in args.probabilities):
-        raise ValueError("all probabilities must be finite and in [0, 1]")
+    if any(not np.isfinite(v) or v < 0 for v in args.l2_values):
+        raise ValueError("l2 values must be finite and non-negative")
 
 
 def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
-    if experiment["codec"].get("algorithm") != V3_ALGORITHM:
-        raise ValueError("the selected config must use the C++ E-GDBF V3 decoder")
+    if experiment["codec"].get("algorithm") != V4_ALGORITHM:
+        raise ValueError("the selected config must use the C++ E-GDBF V4 decoder")
     return experiment, config.get("simulation", {})
-
-
-def parameter_grid(args):
-    candidates = []
-    seen = set()
-    for alpha, eta, beta, probability in itertools.product(
-        args.alphas, args.etas, args.betas, args.probabilities,
-    ):
-        candidate = {
-            "alpha": float(alpha),
-            "eta": float(eta),
-            "beta": float(beta),
-            "p": float(probability),
-        }
-        key = json.dumps(candidate, sort_keys=True)
-        if key not in seen:
-            seen.add(key)
-            candidates.append(candidate)
-    return candidates
 
 
 def main():
@@ -126,8 +101,11 @@ def main():
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
-    egdbf_compile()
-    candidates = parameter_grid(args)
+    gdms_compile()
+    candidates = parameter_grid(
+        args,
+        base_experiment["codec"]["decoder_params"],
+    )
     if args.max_configs is not None:
         candidates = candidates[:args.max_configs]
 
@@ -136,7 +114,7 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.with_suffix(".jsonl").write_text("", encoding="utf-8")
     print(
-        f"E-GDBF V3 search: SNR={args.snr:g} dB, "
+        f"E-GDBF V4 search: SNR={args.snr:g} dB, "
         f"max_trials={args.trials}, target_errors={args.max_errors}, "
         f"parameter_sets={len(candidates)}, workers={workers}",
         flush=True,
@@ -163,10 +141,16 @@ def main():
         for completed, result in enumerate(results, start=1):
             with output_path.with_suffix(".jsonl").open("a", encoding="utf-8") as log:
                 log.write(json.dumps(result) + "\n")
+            params = json.dumps(result["decoder_params"], separators=(",", ":"))
+            if result["invalid"]:
+                print(
+                    f"INVALID [{completed}/{len(candidates)}] params={params}",
+                    flush=True,
+                )
+                continue
             if best_result is None or result_score(result) < result_score(best_result):
                 best_result = result
                 save_best(output_path, result, args, completed, len(candidates))
-                params = json.dumps(result["decoder_params"], separators=(",", ":"))
                 print(
                     f"NEW BEST [{completed}/{len(candidates)}] "
                     f"FER={result['fer']:.6g} "

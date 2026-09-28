@@ -33,6 +33,8 @@ def lib_compile():
                 "-Wextra",
                 "-Werror",
                 "-O3",
+                # Keep a*b + c unfused so results match the Python decoders.
+                "-ffp-contract=off",
                 "-fPIC",
                 "-shared",
                 str(SOURCE_PATH),
@@ -79,10 +81,22 @@ def load_library():
         uint32_array,
         uint32_array,
     ]
-    for name in ("cpp_egdbf_create", "cpp_egdbf_v2_create", "cpp_egdbf_v3_create"):
+    for name in ("cpp_egdbf_create", "cpp_egdbf_v2_create"):
         create = getattr(library, name)
         create.restype = ctypes.c_void_p
         create.argtypes = create_argtypes
+    library.cpp_egdbf_v3_create.restype = ctypes.c_void_p
+    library.cpp_egdbf_v3_create.argtypes = [
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_double,
+        ctypes.c_double,
+        ctypes.c_double,
+        ctypes.c_double,
+        uint32_array,
+        uint32_array,
+    ]
     library.cpp_egdbf_decode_float32.restype = ctypes.c_uint32
     library.cpp_egdbf_decode_float32.argtypes = [
         ctypes.c_void_p,
@@ -124,20 +138,16 @@ class CppBinLdpcEgdbfDecoder(BinLdpcEgdbfDecoder):
             self.block_length,
             self.n_checks,
             self.n_iterations,
-            self.alpha,
-            self.rule_parameter(),
-            self.p,
-            self.rho_values,
-            self.L,
+            *self.rule_arguments(),
             self.edge_vn,
             self.check_offsets,
         )
         if not self._decoder:
             raise RuntimeError("Failed to create C++ E-GDBF decoder")
 
-    def rule_parameter(self):
-        """Value passed to C++ as delta (V1/V2) or eta (V3)."""
-        return self.delta
+    def rule_arguments(self):
+        """Update-rule parameters passed to the C++ create function."""
+        return self.alpha, self.delta, self.p, self.rho_values, self.L
 
     def decode(self, llr_in, llr_out, rng=None):
         seed = 0

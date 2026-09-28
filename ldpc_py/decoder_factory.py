@@ -12,6 +12,8 @@ from .bin_ldpc_egdbf_v2 import BinLdpcEgdbfV2Decoder
 from .cpp_bin_ldpc_egdbf_v2 import CppBinLdpcEgdbfV2Decoder
 from .bin_ldpc_egdbf_v3 import BinLdpcEgdbfV3Decoder
 from .cpp_bin_ldpc_egdbf_v3 import CppBinLdpcEgdbfV3Decoder
+from .bin_ldpc_egdbf_v4 import BinLdpcEgdbfV4Decoder
+from .cpp_bin_ldpc_egdbf_v4 import CppBinLdpcEgdbfV4Decoder
 from .bin_ldpc_gdms import BinLdpcGdmsDecoder
 from .bin_ldpc_mgdms import BinLdpcMgdmsDecoder
 from .cpp_bin_ldpc_gdms import CppBinLdpcGdmsDecoder
@@ -33,6 +35,8 @@ _DECODER_TYPES = {
     "cpp edge-wise gradient descent bit-flipping v2": CppBinLdpcEgdbfV2Decoder,
     "edge-wise gradient descent bit-flipping v3": BinLdpcEgdbfV3Decoder,
     "cpp edge-wise gradient descent bit-flipping v3": CppBinLdpcEgdbfV3Decoder,
+    "edge-wise gradient descent bit-flipping v4": BinLdpcEgdbfV4Decoder,
+    "cpp edge-wise gradient descent bit-flipping v4": CppBinLdpcEgdbfV4Decoder,
     "gradient descent min-sum": BinLdpcGdmsDecoder,
     "momentum gradient descent min-sum": BinLdpcMgdmsDecoder,
     "cpp momentum gradient descent min-sum": CppBinLdpcMgdmsDecoder,
