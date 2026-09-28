@@ -30,6 +30,7 @@ _DECODER_TYPES = {
     "cpp momentum gradient descent min-sum": CppBinLdpcMgdmsDecoder,
     "soft gradient descent bit-flipping": BinLdpcGdmsDecoder,
     "cpp gradient descent min-sum": CppBinLdpcGdmsDecoder,
+    "cpp soft gradient descent bit-flipping": CppBinLdpcGdmsDecoder,
     "test gradient descent bit-flipping": BinLdpcTgdbfDecoder,
 }
 
