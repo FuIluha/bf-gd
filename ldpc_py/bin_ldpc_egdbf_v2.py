@@ -8,11 +8,6 @@ from .bin_ldpc_egdbf import BinLdpcEgdbfDecoder
 class BitMeanEnergyThreshold:
     """Threshold policy shared by the Python and C++ V2 wrappers."""
 
-    def __init__(self, alist_filename, **kwargs):
-        if float(kwargs.get("p", 1.0)) != 1.0:
-            raise ValueError("probabilistic flips are supported only by E-GDBF V1")
-        super().__init__(alist_filename, **kwargs)
-
     def energy_threshold(self, energies):
         bit_means = np.bincount(
             self.edge_vn,
