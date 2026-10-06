@@ -6,7 +6,7 @@ Decoder of LDPC codes. Supports the following decoders:
 * PGDBF with momentum
 * EPMGDBF
 * FTGDBF (fixed-threshold gradient descent bit-flipping)
-* E-GDBF (edge-wise gradient descent bit-flipping), Python and C++
+* E-GDBF V1 and V2 (edge-wise gradient descent bit-flipping), Python and C++
 * GDMS (gradient-descent min-sum) with Python and C++ implementations
 
 ## Implementation notes
@@ -25,9 +25,16 @@ graph edge.  Its synchronous message updates are
 q[i->a] = sign(y[i])                                      # initialization
 r[a->i] = product(q[j->a] for j in N(a) excluding i)
 g[i->a] = alpha*y[i] + sum(r[b->i] for b in N(i) excluding a)
-          + rho[l[i->a]]*q[i->a]
-q_new[i->a] = sign(g[i->a])
+E[i->a] = q[i->a]*g[i->a] + rho[l[i->a]]
+E_th = min(E over all edges of the word) + delta
+q_new[i->a] = -q[i->a] if E[i->a] <= E_th else q[i->a]
 ```
+
+V2 changes only the threshold: compute the mean edge energy of each variable
+node, then use the smallest of these means plus `delta`. Individual edges are
+still flipped by comparing their own energy to that common threshold. V1 and
+V2 are separate decoder types in `decoder_factory.py`; the existing `run.sh`
+accepts `experiments/experiment_cpp_egdbf_v2.json` for V2.
 
 The hard a-posteriori word is computed separately:
 
@@ -39,6 +46,10 @@ x[i] = sign(g_post[i])
 There is no min-sum magnitude operation and no multiplication of a check
 message by the current hard-word bit.  The hard word is not fed back to the
 checks: they use the independently stored `q[i->a]` signs on the next
-iteration.  Momentum acts as inertia in the direction of the current edge
-sign.  This is an edge-state message-passing modification, not a claim of a
+iteration. The `rho` term changes the energy of recently flipped edges. The
+threshold `delta` is non-negative and defaults to `0` in older configs.
+This is an edge-state message-passing modification, not a claim of a
 different proven scalar objective.
+
+Set `L` to `0` and `rho` to `[]` to disable momentum in both the Python and
+C++ implementations. With `L > 0`, `rho` must contain exactly `L` values.

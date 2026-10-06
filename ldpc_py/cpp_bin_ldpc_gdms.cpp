@@ -5,7 +5,8 @@
 #include <new>
 #include <vector>
 
-// GDMS/MGDMS with extrinsic edge states, L2 decay, and optional momentum.
+// GDMS/MGDMS with extrinsic edge states, L2 decay, optional momentum, and an
+// optional sign-only check update for E-GDBF V4.
 class CppGdmsDecoder {
  public:
   CppGdmsDecoder(
@@ -17,6 +18,7 @@ class CppGdmsDecoder {
       double alpha,
       double l2,
       double momentum,
+      bool sign_only,
       const uint32_t* edge_vn,
       const uint32_t* check_offsets)
       : block_length_(block_length),
@@ -27,6 +29,7 @@ class CppGdmsDecoder {
         alpha_(alpha),
         l2_(l2),
         momentum_(momentum),
+        sign_only_(sign_only),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         x_(block_length),
@@ -148,9 +151,9 @@ class CppGdmsDecoder {
         const bool unique_first_minimum =
             std::abs(value) == first_minimum &&
             first_minimum_counts_[check] == 1;
-        const double magnitude = unique_first_minimum
-            ? second_minima_[check]
-            : first_minimum;
+        const double magnitude = sign_only_
+            ? 1.0
+            : unique_first_minimum ? second_minima_[check] : first_minimum;
         const int extrinsic_sign =
             check_signs_[check] * (value < 0.0 ? -1 : 1);
         check_messages_[edge] = extrinsic_sign * magnitude;
@@ -189,6 +192,7 @@ class CppGdmsDecoder {
   double alpha_;
   double l2_;
   double momentum_;
+  bool sign_only_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
   std::vector<double> x_;
@@ -226,6 +230,36 @@ extern "C" void* cpp_gdms_create(
         alpha,
         l2,
         momentum,
+        false,
+        edge_vn,
+        check_offsets);
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+extern "C" void* cpp_egdbf_v4_create(
+    uint32_t block_length,
+    uint32_t n_checks,
+    uint32_t n_iterations,
+    double learning_rate,
+    double learning_rate_decay,
+    double alpha,
+    double l2,
+    double momentum,
+    const uint32_t* edge_vn,
+    const uint32_t* check_offsets) {
+  try {
+    return new CppGdmsDecoder(
+        block_length,
+        n_checks,
+        n_iterations,
+        learning_rate,
+        learning_rate_decay,
+        alpha,
+        l2,
+        momentum,
+        true,
         edge_vn,
         check_offsets);
   } catch (...) {

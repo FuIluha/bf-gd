@@ -4,17 +4,16 @@
     "channel_output": "received",
     "codec": {
       "type": "BinaryLdpcCodec",
-      "algorithm": "cpp edge-wise gradient descent bit-flipping",
+      "algorithm": "cpp edge-wise gradient descent bit-flipping v3",
       "src_dir": "codes",
       "code": "ldpc_savin_4_8_12_24_Zc54.json",
       "n_iterations": 300,
       "llr_type": "float32",
       "decoder_params": {
-        "alpha": 1.9,
-        "delta": 1.1,
-        "p": 1.0,
-        "rho": [3.25,2.75,2.5,2.25,1.5,0.5,0.375],
-        "L": 7
+        "alpha": 2.0,
+        "eta": 2.0,
+        "beta": 0.0,
+        "p": 1.0
       }
     }
   },
@@ -26,7 +25,7 @@
     "chunk_size": 10,
     "max_experiments": 10000000,
     "snr_precision": 3,
-    "log_file": "log_simulator.log"
+    "log_file": "log_simulator_egdbf_v3.log"
   },
   "postprocessing": {
     "confidence_level": 0.95,

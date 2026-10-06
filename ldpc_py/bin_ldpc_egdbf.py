@@ -1,4 +1,4 @@
-"""Hard-decision Edge-wise Gradient Descent Bit-Flipping decoder."""
+"""Thresholded edge-wise hard message-passing decoder."""
 
 import numpy as np
 
@@ -6,25 +6,31 @@ from .bin_ldpc import BinLdpcDecoderBase
 
 
 class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
-    """Hard message passing with persistent variable-to-check signs."""
+    """Hard extrinsic messages with a word-wide edge-energy threshold."""
 
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.alpha = float(kwargs["alpha"])
+        self.delta = float(kwargs.get("delta", 0.0))
+        self.p = float(kwargs.get("p", 1.0))
         self.L = int(kwargs["L"])
         rho = np.asarray(kwargs["rho"], dtype=np.float64)
 
         if not np.isfinite(self.alpha) or self.alpha <= 0:
             raise ValueError("alpha must be finite and positive")
-        if self.L <= 0:
-            raise ValueError("L must be positive")
+        if not np.isfinite(self.delta) or self.delta < 0:
+            raise ValueError("delta must be finite and non-negative")
+        if not np.isfinite(self.p) or not 0 <= self.p <= 1:
+            raise ValueError("p must be finite and in [0, 1]")
+        if self.L < 0:
+            raise ValueError("L must be non-negative")
         if len(rho) != self.L:
             raise ValueError("Momentum length must be equal to L")
         if not np.all(np.isfinite(rho)):
             raise ValueError("Momentum values must be finite")
 
         # rho[L] is used before an edge message has changed for the first time.
-        self.rho = np.concatenate((rho, np.array([0.0])))
+        self.rho = np.concatenate((rho, np.array([0.0]))) if self.L else rho
 
         edge_cn, edge_vn = np.nonzero(self.pcm)
         self.edge_cn = edge_cn.astype(np.int32)
@@ -45,6 +51,7 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
         )
         if np.any(variable_degrees == 0):
             raise ValueError("E-GDBF does not support degree-zero variable nodes")
+        self.variable_degrees = variable_degrees
 
     def bpsk_syndrome(self, x):
         """Return parity-check products for one hard word."""
@@ -69,11 +76,11 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
             minlength=self.block_length,
         )
 
-    def posterior_gradient(self, y, incoming_sums):
-        """Return the full gradient used only for the hard-word decision."""
+    def posterior_score(self, y, incoming_sums):
+        """Return the full bit score used for the hard-word decision."""
         return self.alpha * y + incoming_sums
 
-    def extrinsic_gradients(
+    def edge_energies(
         self,
         y,
         variable_messages,
@@ -81,14 +88,39 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
         incoming_sums,
         ages,
     ):
-        """Return one recipient-excluding gradient for every outgoing edge."""
+        """Compute q[i->a] times the extrinsic score, plus edge momentum."""
         variables = self.edge_vn
-        return (
+        score = (
             self.alpha * y[variables]
             + incoming_sums[variables]
             - check_messages
-            + self.rho[ages - 1] * variable_messages
         )
+        energy = variable_messages * score
+        if self.L:
+            energy += self.rho[ages - 1]
+        return energy
+
+    def energy_threshold(self, energies):
+        """V1: threshold relative to the least energetic edge."""
+        return np.min(energies) + self.delta
+
+    def flip_candidates(
+        self,
+        y,
+        variable_messages,
+        check_messages,
+        incoming_sums,
+        ages,
+    ):
+        """Edges whose message changes sign before the p-coin."""
+        energies = self.edge_energies(
+            y,
+            variable_messages,
+            check_messages,
+            incoming_sums,
+            ages,
+        )
+        return energies <= self.energy_threshold(energies)
 
     @staticmethod
     def hard_sign(values, previous):
@@ -99,47 +131,70 @@ class BinLdpcEgdbfDecoder(BinLdpcDecoderBase):
             np.where(values < 0, -1, previous),
         ).astype(np.int8)
 
-    def hard_word(self, posterior_gradient, channel_signs):
+    def hard_word(self, posterior_score, channel_signs):
         """Make the a-posteriori hard decision; channel breaks exact ties."""
-        return self.hard_sign(posterior_gradient, channel_signs)
+        return self.hard_sign(posterior_score, channel_signs)
+
+    @staticmethod
+    def edge_flip_uniforms(seed, iteration, edges_count):
+        """Counter-based uniforms shared with the C++ decoder."""
+        counter = np.arange(edges_count, dtype=np.uint64)
+        counter += np.uint64(iteration * edges_count + 1)
+        value = np.add(
+            np.uint64(seed),
+            np.multiply(counter, np.uint64(0x9E3779B97F4A7C15), dtype=np.uint64),
+            dtype=np.uint64,
+        )
+        value = np.multiply(value ^ (value >> 30),
+                            np.uint64(0xBF58476D1CE4E5B9), dtype=np.uint64)
+        value = np.multiply(value ^ (value >> 27),
+                            np.uint64(0x94D049BB133111EB), dtype=np.uint64)
+        value ^= value >> 31
+        return (value >> 11).astype(np.float64) * (1.0 / (1 << 53))
 
     def decode(self, llr_in, llr_out, rng=None):
-        del rng  # E-GDBF message updates are deterministic.
+        if 0 < self.p < 1:
+            if rng is None:
+                rng = np.random.default_rng()
+            seed = int(rng.bit_generator.random_raw())
         y = np.asarray(llr_in, dtype=np.float64)
         channel_signs = np.where(y >= 0, 1, -1).astype(np.int8)
         variable_messages = channel_signs[self.edge_vn].copy()
-        ages = np.full(self.edges_count, self.L + 1, dtype=np.int32)
+        ages = np.full(self.edges_count, self.L + 1, dtype=np.int32) if self.L else None
 
         for iteration in range(self.n_iterations):
             check_messages = self.check_to_variable_messages(
                 variable_messages,
             )
             incoming = self.incoming_sums(check_messages)
-            posterior = self.posterior_gradient(y, incoming)
+            posterior = self.posterior_score(y, incoming)
             x = self.hard_word(posterior, channel_signs)
             if np.all(self.bpsk_syndrome(x) == 1):
                 llr_out[:] = x
                 return iteration
 
-            np.minimum(ages, self.L, out=ages)
-            ages += 1
-            gradients = self.extrinsic_gradients(
+            if self.L:
+                np.minimum(ages, self.L, out=ages)
+                ages += 1
+            flip = self.flip_candidates(
                 y,
                 variable_messages,
                 check_messages,
                 incoming,
                 ages,
             )
-            new_messages = self.hard_sign(
-                gradients,
-                variable_messages,
-            )
-            changed = new_messages != variable_messages
-            variable_messages = new_messages
-            ages[changed] = 0
+            if self.p == 0:
+                flip[:] = False
+            elif self.p < 1:
+                flip &= self.edge_flip_uniforms(
+                    seed, iteration, self.edges_count,
+                ) < self.p
+            variable_messages[flip] *= -1
+            if self.L:
+                ages[flip] = 0
 
         check_messages = self.check_to_variable_messages(variable_messages)
         incoming = self.incoming_sums(check_messages)
-        posterior = self.posterior_gradient(y, incoming)
+        posterior = self.posterior_score(y, incoming)
         llr_out[:] = self.hard_word(posterior, channel_signs)
         return self.n_iterations

@@ -33,6 +33,8 @@ def lib_compile():
                 "-Wextra",
                 "-Werror",
                 "-O3",
+                # Keep a*b + c unfused so results match the Python decoders.
+                "-ffp-contract=off",
                 "-fPIC",
                 "-shared",
                 str(SOURCE_PATH),
@@ -67,14 +69,31 @@ def load_library():
         flags="C_CONTIGUOUS",
     )
 
-    library.cpp_egdbf_create.restype = ctypes.c_void_p
-    library.cpp_egdbf_create.argtypes = [
+    create_argtypes = [
         ctypes.c_uint32,
         ctypes.c_uint32,
         ctypes.c_uint32,
         ctypes.c_double,
+        ctypes.c_double,
+        ctypes.c_double,
         float64_array,
         ctypes.c_uint32,
+        uint32_array,
+        uint32_array,
+    ]
+    for name in ("cpp_egdbf_create", "cpp_egdbf_v2_create"):
+        create = getattr(library, name)
+        create.restype = ctypes.c_void_p
+        create.argtypes = create_argtypes
+    library.cpp_egdbf_v3_create.restype = ctypes.c_void_p
+    library.cpp_egdbf_v3_create.argtypes = [
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_double,
+        ctypes.c_double,
+        ctypes.c_double,
+        ctypes.c_double,
         uint32_array,
         uint32_array,
     ]
@@ -83,12 +102,14 @@ def load_library():
         ctypes.c_void_p,
         float32_array,
         float32_array,
+        ctypes.c_uint64,
     ]
     library.cpp_egdbf_decode_float64.restype = ctypes.c_uint32
     library.cpp_egdbf_decode_float64.argtypes = [
         ctypes.c_void_p,
         float64_array,
         float64_array,
+        ctypes.c_uint64,
     ]
     library.cpp_egdbf_free.restype = None
     library.cpp_egdbf_free.argtypes = [ctypes.c_void_p]
@@ -97,6 +118,8 @@ def load_library():
 
 class CppBinLdpcEgdbfDecoder(BinLdpcEgdbfDecoder):
     """C++ implementation of the E-GDBF decoder."""
+
+    _create_function = "cpp_egdbf_create"
 
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
@@ -111,21 +134,27 @@ class CppBinLdpcEgdbfDecoder(BinLdpcEgdbfDecoder):
         )
 
         self._library = load_library()
-        self._decoder = self._library.cpp_egdbf_create(
+        self._decoder = getattr(self._library, self._create_function)(
             self.block_length,
             self.n_checks,
             self.n_iterations,
-            self.alpha,
-            self.rho_values,
-            self.L,
+            *self.rule_arguments(),
             self.edge_vn,
             self.check_offsets,
         )
         if not self._decoder:
             raise RuntimeError("Failed to create C++ E-GDBF decoder")
 
+    def rule_arguments(self):
+        """Update-rule parameters passed to the C++ create function."""
+        return self.alpha, self.delta, self.p, self.rho_values, self.L
+
     def decode(self, llr_in, llr_out, rng=None):
-        del rng  # E-GDBF message updates are deterministic.
+        seed = 0
+        if 0 < self.p < 1:
+            if rng is None:
+                rng = np.random.default_rng()
+            seed = int(rng.bit_generator.random_raw())
         if llr_in.dtype != llr_out.dtype:
             raise TypeError("llr_in and llr_out must have the same dtype")
         if not llr_in.flags.c_contiguous or not llr_out.flags.c_contiguous:
@@ -136,12 +165,14 @@ class CppBinLdpcEgdbfDecoder(BinLdpcEgdbfDecoder):
                 self._decoder,
                 llr_in,
                 llr_out,
+                seed,
             )
         if llr_in.dtype == np.float64:
             return self._library.cpp_egdbf_decode_float64(
                 self._decoder,
                 llr_in,
                 llr_out,
+                seed,
             )
         raise TypeError("C++ E-GDBF supports only float32 and float64 LLRs")
 

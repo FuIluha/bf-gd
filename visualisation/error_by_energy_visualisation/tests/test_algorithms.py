@@ -6,6 +6,11 @@ from visualisation.error_by_energy_visualisation.algorithms import BatchDecoderE
 from visualisation.error_by_energy_visualisation.models import FrameBatch
 from ldpc_py.bin_ldpc_ftgdbf import BinLdpcFtgdbfDecoder
 from ldpc_py.bin_ldpc_gdms import BinLdpcGdmsDecoder
+from ldpc_py.bin_ldpc_egdbf import BinLdpcEgdbfDecoder
+from ldpc_py.cpp_bin_ldpc_egdbf import CppBinLdpcEgdbfDecoder
+from ldpc_py.bin_ldpc_egdbf_v2 import BinLdpcEgdbfV2Decoder
+from ldpc_py.cpp_bin_ldpc_egdbf_v2 import CppBinLdpcEgdbfV2Decoder
+from ldpc_py.decoder_factory import create_decoder
 from ldpc_py.bin_ldpc_pmgdbf import BinLdpcPmgdbfDecoder
 from ldpc_py.bin_ldpc_tgdbf import BinLdpcTgdbfDecoder
 
@@ -16,6 +21,11 @@ PCM = np.asarray([
     [1, 0, 0, 0, 1, 1],
     [0, 1, 0, 1, 0, 1],
 ], dtype=np.uint8)
+
+EGDBF_RECEIVED = np.asarray([
+    [-1.7657658, 1.1919596, 1.6477470, 0.3385023, 0.4917809, 2.4136950],
+    [-0.7954280, 0.5324225, 1.4048856, -0.3198107, 1.3699480, 0.2621832],
+], dtype=np.float32)
 
 
 def batch():
@@ -181,6 +191,188 @@ class DecoderTests(unittest.TestCase):
         decoder = make_decoder(BinLdpcGdmsDecoder)
         x = np.zeros((1, self.graph.block_length))
         np.testing.assert_array_equal(decoder.hard_decision({"x": x}), np.ones_like(x))
+
+    def test_egdbf_without_momentum_matches_zero_profile(self):
+        for decoder_type in (BinLdpcEgdbfDecoder, CppBinLdpcEgdbfDecoder):
+            for dtype in (np.float32, np.float64):
+                with self.subTest(decoder=decoder_type.__name__, dtype=dtype):
+                    common = dict(
+                        pcm=PCM, block_length=PCM.shape[1], n_checks=PCM.shape[0],
+                        n_iterations=5, is_systematic=False, alpha=1.8,
+                    )
+                    disabled = decoder_type(None, L=0, rho=[], **common)
+                    zero_profile = decoder_type(None, L=3, rho=[0, 0, 0], **common)
+                    for received in EGDBF_RECEIVED.astype(dtype):
+                        actual = np.empty_like(received)
+                        expected = np.empty_like(received)
+                        actual_iterations = disabled.decode(received, actual)
+                        expected_iterations = zero_profile.decode(received, expected)
+                        self.assertGreater(actual_iterations, 0)
+                        self.assertEqual(actual_iterations, expected_iterations)
+                        np.testing.assert_array_equal(actual, expected)
+
+    def test_egdbf_momentum_parameters_are_consistent(self):
+        common = dict(
+            pcm=PCM, block_length=PCM.shape[1], n_checks=PCM.shape[0],
+            n_iterations=1, is_systematic=False, alpha=0.45,
+        )
+        for decoder_type in (BinLdpcEgdbfDecoder, CppBinLdpcEgdbfDecoder):
+            with self.subTest(decoder=decoder_type.__name__):
+                for params in (
+                    {"L": -1, "rho": []}, {"L": 0, "rho": [1]},
+                    {"L": 0, "rho": [], "delta": -0.1},
+                    {"L": 0, "rho": [], "p": -0.1},
+                    {"L": 0, "rho": [], "p": 1.1},
+                ):
+                    with self.assertRaises(ValueError):
+                        decoder_type(None, **common, **params)
+
+    def test_egdbf_threshold_matches_scalar_reference(self):
+        edge_cn, edge_vn = np.nonzero(PCM)
+
+        def reference(received, alpha, delta, rho, iterations, mean_threshold):
+            channel = np.where(received >= 0, 1, -1)
+            q = channel[edge_vn].copy()
+            ages = np.full(len(q), len(rho) + 1, dtype=int)
+            for iteration in range(iterations + 1):
+                messages = np.asarray([
+                    np.prod(q[(edge_cn == check) & (np.arange(len(q)) != edge)])
+                    for edge, check in enumerate(edge_cn)
+                ])
+                full = alpha * received + np.asarray([
+                    sum(messages[edge_vn == bit]) for bit in range(len(received))
+                ])
+                word = np.where(full > 0, 1, np.where(full < 0, -1, channel))
+                if iteration == iterations or np.all([
+                    np.prod(word[row.astype(bool)]) == 1 for row in PCM
+                ]):
+                    return iteration, word
+                if rho:
+                    ages = np.minimum(ages, len(rho)) + 1
+                energies = np.asarray([
+                    q[edge] * (alpha * received[bit] + sum(
+                        messages[(edge_vn == bit) & (np.arange(len(q)) != edge)]
+                    )) + (rho[ages[edge] - 1] if rho and 1 <= ages[edge] <= len(rho) else 0)
+                    for edge, bit in enumerate(edge_vn)
+                ])
+                if mean_threshold:
+                    minimum = min(
+                        np.mean(energies[edge_vn == bit])
+                        for bit in range(len(received))
+                    )
+                else:
+                    minimum = min(energies)
+                flipped = energies <= minimum + delta
+                q[flipped] *= -1
+                if rho:
+                    ages[flipped] = 0
+
+        for decoder_type, mean_threshold in (
+            (BinLdpcEgdbfDecoder, False),
+            (CppBinLdpcEgdbfDecoder, False),
+            (BinLdpcEgdbfV2Decoder, True),
+            (CppBinLdpcEgdbfV2Decoder, True),
+        ):
+            for params in (
+                {"L": 0, "rho": [], "delta": 0.0},
+                {"L": 3, "rho": [0.5, 0.25, 0.1], "delta": 0.4},
+            ):
+                with self.subTest(decoder=decoder_type.__name__, params=params):
+                    decoder = decoder_type(
+                        None, pcm=PCM, block_length=PCM.shape[1],
+                        n_checks=PCM.shape[0], n_iterations=5,
+                        is_systematic=False, alpha=1.8, **params,
+                    )
+                    for received in EGDBF_RECEIVED:
+                        output = np.empty_like(received)
+                        actual_iterations = decoder.decode(received, output)
+                        expected_iterations, expected = reference(
+                            received, 1.8, params["delta"], params["rho"],
+                            5, mean_threshold,
+                        )
+                        self.assertGreater(actual_iterations, 0)
+                        self.assertEqual(actual_iterations, expected_iterations)
+                        np.testing.assert_array_equal(output, expected)
+
+    def test_egdbf_v2_threshold_uses_bit_means(self):
+        common = dict(
+            pcm=PCM, block_length=PCM.shape[1], n_checks=PCM.shape[0],
+            n_iterations=1, is_systematic=False, alpha=1.8,
+            delta=0.25, L=0, rho=[],
+        )
+        v1 = BinLdpcEgdbfDecoder(None, **common)
+        v2 = BinLdpcEgdbfV2Decoder(None, **common)
+        for decoder_type in (BinLdpcEgdbfV2Decoder, CppBinLdpcEgdbfV2Decoder):
+            with self.assertRaises(ValueError):
+                decoder_type(None, **{**common, "p": 0.5})
+        energies = np.full(v1.edges_count, 4.0)
+        energies[np.flatnonzero(v1.edge_vn == 0)] = [-4.0, 4.0]
+        energies[np.flatnonzero(v1.edge_vn == 1)] = [-2.0, -2.0]
+        self.assertEqual(v1.energy_threshold(energies), -3.75)
+        self.assertEqual(v2.energy_threshold(energies), -1.75)
+
+        for algorithm, decoder_type in (
+            ("edge-wise gradient descent bit-flipping v2", BinLdpcEgdbfV2Decoder),
+            ("cpp edge-wise gradient descent bit-flipping v2", CppBinLdpcEgdbfV2Decoder),
+        ):
+            self.assertIsInstance(create_decoder(algorithm, None, **common), decoder_type)
+
+    def test_egdbf_python_and_cpp_agree_with_momentum(self):
+        common = dict(
+            pcm=PCM, block_length=PCM.shape[1], n_checks=PCM.shape[0],
+            n_iterations=5, is_systematic=False, alpha=1.8,
+            L=3, rho=[0.5, 0.25, 0.1],
+        )
+        python_decoder = BinLdpcEgdbfDecoder(None, **common)
+        cpp_decoder = CppBinLdpcEgdbfDecoder(None, **common)
+        for received in EGDBF_RECEIVED:
+            python_output = np.empty_like(received)
+            cpp_output = np.empty_like(received)
+            python_iterations = python_decoder.decode(received, python_output)
+            cpp_iterations = cpp_decoder.decode(received, cpp_output)
+            self.assertEqual(python_iterations, cpp_iterations)
+            np.testing.assert_array_equal(python_output, cpp_output)
+
+    def test_egdbf_probabilistic_flips_match_python_and_cpp(self):
+        common = dict(
+            pcm=PCM, block_length=PCM.shape[1], n_checks=PCM.shape[0],
+            n_iterations=20, is_systematic=False, alpha=1.8,
+            delta=0.4, L=0, rho=[],
+        )
+        for probability in (0.0, 0.3, 1.0):
+            python_decoder = BinLdpcEgdbfDecoder(None, p=probability, **common)
+            cpp_decoder = CppBinLdpcEgdbfDecoder(None, p=probability, **common)
+            for dtype in (np.float32, np.float64):
+                for received in EGDBF_RECEIVED.astype(dtype):
+                    for seed in range(4):
+                        with self.subTest(p=probability, dtype=dtype, seed=seed):
+                            python_rng = np.random.default_rng(seed)
+                            cpp_rng = np.random.default_rng(seed)
+                            python_output = np.empty_like(received)
+                            cpp_output = np.empty_like(received)
+                            python_iterations = python_decoder.decode(
+                                received, python_output, python_rng,
+                            )
+                            cpp_iterations = cpp_decoder.decode(
+                                received, cpp_output, cpp_rng,
+                            )
+                            self.assertEqual(python_iterations, cpp_iterations)
+                            np.testing.assert_array_equal(python_output, cpp_output)
+                            self.assertEqual(
+                                python_rng.bit_generator.random_raw(),
+                                cpp_rng.bit_generator.random_raw(),
+                            )
+
+        received = EGDBF_RECEIVED[1]
+        outputs = []
+        for probability in (0.0, 1.0):
+            decoder = BinLdpcEgdbfDecoder(
+                None, p=probability, **{**common, "n_iterations": 3},
+            )
+            output = np.empty_like(received)
+            decoder.decode(received, output)
+            outputs.append(output)
+        self.assertFalse(np.array_equal(*outputs))
 
     def test_decode_and_visualizer_share_the_same_step(self):
         for decoder_type in (BinLdpcFtgdbfDecoder, BinLdpcPmgdbfDecoder, BinLdpcGdmsDecoder):
