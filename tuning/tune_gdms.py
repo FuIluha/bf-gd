@@ -17,13 +17,13 @@ from simulator_awgn_python.tools import load_json
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gdms.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gdms_l2.txt"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gdms_potential.txt"
 
-# 6 * 4 * 5 * 7 = 840 combinations, including ordinary min-sum dynamics.
-DEFAULT_LEARNING_RATES = (0.05, 0.1, 0.25, 0.5, 0.75, 1.0)
+# 6 * 4 * 5 * 7 = 840 grid combinations, plus the JSON baseline when unique.
+DEFAULT_LEARNING_RATES = (0.005, 0.01, 0.025, 0.05, 0.075, 0.1)
 DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.05, 0.1)
-DEFAULT_ALPHAS = (0.25, 0.5, 1.0, 2.0, 4.0)
-DEFAULT_L2 = (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
+DEFAULT_CHANNEL_WEIGHTS = (0.25, 0.5, 1.0, 2.0, 4.0)
+DEFAULT_BIPOLAR_WEIGHTS = (0.0, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -68,17 +68,23 @@ def parse_args():
         default=DEFAULT_LEARNING_RATE_DECAYS,
     )
     parser.add_argument(
-        "--alphas",
+        "--channel-weights",
         type=comma_separated_floats,
-        default=DEFAULT_ALPHAS,
+        default=DEFAULT_CHANNEL_WEIGHTS,
     )
-    parser.add_argument("--l2-values", type=comma_separated_floats, default=DEFAULT_L2)
+    parser.add_argument(
+        "--bipolar-weights",
+        type=comma_separated_floats,
+        default=DEFAULT_BIPOLAR_WEIGHTS,
+    )
     return parser.parse_args()
 
 
 def validate_args(args):
-    if any(not np.isfinite(v) or v < 0 for v in args.l2_values):
-        raise ValueError("l2 values must be finite and non-negative")
+    if any(not np.isfinite(v) or v < 0 for v in args.bipolar_weights):
+        raise ValueError("bipolar weights must be finite and non-negative")
+    if any(not np.isfinite(v) or v <= 0 for v in args.channel_weights):
+        raise ValueError("channel weights must be finite and positive")
     if args.trials <= 0:
         raise ValueError("--trials must be positive")
     if args.max_errors <= 0:
@@ -105,21 +111,21 @@ def parameter_grid(args, base_params):
     baseline = {
         "learning_rate": float(base_params["learning_rate"]),
         "learning_rate_decay": float(base_params["learning_rate_decay"]),
-        "alpha": float(base_params["alpha"]),
-        "l2": float(base_params.get("l2", 1.0)),
+        "channel_weight": float(base_params["channel_weight"]),
+        "bipolar_weight": float(base_params["bipolar_weight"]),
     }
     candidates = [baseline]
     for values in itertools.product(
         args.learning_rates,
         args.learning_rate_decays,
-        args.alphas,
-        args.l2_values,
+        args.channel_weights,
+        args.bipolar_weights,
     ):
         candidates.append({
             "learning_rate": values[0],
             "learning_rate_decay": values[1],
-            "alpha": values[2],
-            "l2": values[3],
+            "channel_weight": values[2],
+            "bipolar_weight": values[3],
         })
 
     unique_candidates = []

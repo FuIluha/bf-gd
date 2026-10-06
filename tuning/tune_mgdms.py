@@ -18,10 +18,10 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_mgdms.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_mgdms.txt"
 
-DEFAULT_LEARNING_RATES = (0.75,)
+DEFAULT_LEARNING_RATES = (0.05,)
 DEFAULT_LEARNING_RATE_DECAYS = (0.03,)
-DEFAULT_ALPHAS = (2.0,)
-DEFAULT_L2 = (1.2,)
+DEFAULT_CHANNEL_WEIGHTS = (1.0,)
+DEFAULT_BIPOLAR_WEIGHTS = (0.1,)
 DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.95 + 1e-9, 0.05), 6))
 
 _BASE_EXPERIMENT = None
@@ -65,7 +65,7 @@ def parse_args():
         "--full-grid",
         dest="full_grid",
         action="store_true",
-        help="Enumerate learning_rate, learning_rate_decay, alpha, l2 and momentum together. By default only momentum is swept while the other settings stay fixed from the JSON.",
+        help="Enumerate learning rate, decay, channel weight, bipolar weight and momentum together. By default only momentum is swept while the other settings stay fixed from the JSON.",
     )
     parser.add_argument(
         "--momentum-only",
@@ -85,11 +85,15 @@ def parse_args():
         default=DEFAULT_LEARNING_RATE_DECAYS,
     )
     parser.add_argument(
-        "--alphas",
+        "--channel-weights",
         type=comma_separated_floats,
-        default=DEFAULT_ALPHAS,
+        default=DEFAULT_CHANNEL_WEIGHTS,
     )
-    parser.add_argument("--l2-values", type=comma_separated_floats, default=DEFAULT_L2)
+    parser.add_argument(
+        "--bipolar-weights",
+        type=comma_separated_floats,
+        default=DEFAULT_BIPOLAR_WEIGHTS,
+    )
     parser.add_argument(
         "--momentum-values",
         type=comma_separated_floats,
@@ -99,8 +103,10 @@ def parse_args():
 
 
 def validate_args(args):
-    if any(not np.isfinite(v) or v < 0 for v in args.l2_values):
-        raise ValueError("l2 values must be finite and non-negative")
+    if any(not np.isfinite(v) or v < 0 for v in args.bipolar_weights):
+        raise ValueError("bipolar weights must be finite and non-negative")
+    if any(not np.isfinite(v) or v <= 0 for v in args.channel_weights):
+        raise ValueError("channel weights must be finite and positive")
     if any(not np.isfinite(v) or v < 0 or v >= 1 for v in args.momentum_values):
         raise ValueError("momentum values must be finite, non-negative, and strictly less than 1")
     if args.trials <= 0:
@@ -132,8 +138,8 @@ def parameter_grid(args, base_params):
     baseline = {
         "learning_rate": float(base_params["learning_rate"]),
         "learning_rate_decay": float(base_params["learning_rate_decay"]),
-        "alpha": float(base_params["alpha"]),
-        "l2": float(base_params.get("l2", 1.0)),
+        "channel_weight": float(base_params["channel_weight"]),
+        "bipolar_weight": float(base_params["bipolar_weight"]),
         "momentum": float(base_params.get("momentum", 0.0)),
     }
 
@@ -144,8 +150,8 @@ def parameter_grid(args, base_params):
                 {
                     "learning_rate": baseline["learning_rate"],
                     "learning_rate_decay": baseline["learning_rate_decay"],
-                    "alpha": baseline["alpha"],
-                    "l2": baseline["l2"],
+                    "channel_weight": baseline["channel_weight"],
+                    "bipolar_weight": baseline["bipolar_weight"],
                     "momentum": momentum,
                 }
             )
@@ -155,16 +161,16 @@ def parameter_grid(args, base_params):
     for values in itertools.product(
         args.learning_rates,
         args.learning_rate_decays,
-        args.alphas,
-        args.l2_values,
+        args.channel_weights,
+        args.bipolar_weights,
         args.momentum_values,
     ):
         candidates.append(
             {
                 "learning_rate": values[0],
                 "learning_rate_decay": values[1],
-                "alpha": values[2],
-                "l2": values[3],
+                "channel_weight": values[2],
+                "bipolar_weight": values[3],
                 "momentum": values[4],
             }
         )

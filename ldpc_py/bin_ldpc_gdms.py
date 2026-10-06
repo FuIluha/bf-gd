@@ -8,16 +8,18 @@ from visualisation.error_by_energy_visualisation.models import (
 )
 
 class BinLdpcGdmsDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
-    """Gradient-descent min-sum decoder with extrinsic edge states and L2 decay."""
+    """Gradient-descent min-sum decoder with a smooth bipolar penalty."""
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.learning_rate = kwargs["learning_rate"]
         self.learning_rate_decay = kwargs["learning_rate_decay"]
-        self.alpha = kwargs["alpha"]
+        self.channel_weight = float(kwargs["channel_weight"])
+        self.bipolar_weight = float(kwargs["bipolar_weight"])
 
-        self.l2 = float(kwargs.get("l2", 1.0))
-        if not np.isfinite(self.l2) or self.l2 < 0:
-            raise ValueError("l2 must be finite and non-negative")
+        if not np.isfinite(self.channel_weight) or self.channel_weight <= 0:
+            raise ValueError("channel_weight must be finite and positive")
+        if not np.isfinite(self.bipolar_weight) or self.bipolar_weight < 0:
+            raise ValueError("bipolar_weight must be finite and non-negative")
 
         if self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
@@ -49,10 +51,10 @@ class BinLdpcGdmsDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
         return DecoderSpec(
             key="gdms", title="GDMS",
             parameters=(
-                ParameterSpec("learning_rate", "learning_rate", "float", 0.75, 0.000001, 5.0, 0.01),
+                ParameterSpec("learning_rate", "learning_rate", "float", 0.05, 0.000001, 5.0, 0.01),
                 ParameterSpec("learning_rate_decay", "learning_rate_decay", "float", 0.03, 0.0, 5.0, 0.01),
-                ParameterSpec("alpha", "alpha", "float", 2.0, 0.0, 5.0, 0.01),
-                ParameterSpec("l2", "l2", "float", 1.2, 0.0, 5.0, 0.01),
+                ParameterSpec("channel_weight", "channel_weight", "float", 1.0, 0.000001, 5.0, 0.01),
+                ParameterSpec("bipolar_weight", "bipolar_weight", "float", 0.1, 0.0, 5.0, 0.01),
             ),
             observables=(ObservableSpec("step", "Шаг сообщения Δq", True),),
             categories=(
@@ -140,29 +142,35 @@ class BinLdpcGdmsDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
         extrinsic_signs = check_signs[self.edge_cn] * edge_signs
         return extrinsic_signs * extrinsic_magnitudes
 
-    def variable_to_check_messages(self, y, check_messages):
-        """Exclude the recipient check from each outgoing edge message."""
-        total = self.objective_gradient(y, check_messages)
-        return total[self.edge_vn] - check_messages
-
-    def objective_gradient(self, y, check_messages, alpha=None):
-        """Channel plus all current check messages, used as the bit-update direction."""
-        return (self.alpha if alpha is None else alpha) * y + np.bincount(
-            self.edge_vn, weights=check_messages, minlength=self.block_length,
+    @staticmethod
+    def channel_bipolar_direction(y, state, channel_weight, bipolar_weight):
+        """Negative gradient of the channel distance and bipolar penalty."""
+        return (
+            channel_weight * (y - state)
+            - 4.0 * bipolar_weight * state * (state * state - 1.0)
         )
 
     def update_state(self, y, x, outgoing, iteration, parameters=None):
         parameters = parameters or {
             "learning_rate": self.learning_rate,
             "learning_rate_decay": self.learning_rate_decay,
-            "alpha": self.alpha,
-            "l2": self.l2,
+            "channel_weight": self.channel_weight,
+            "bipolar_weight": self.bipolar_weight,
         }
         incoming = self.check_to_variable_messages(outgoing)
-        total = self.objective_gradient(y, incoming, parameters["alpha"])
+        check_total = np.bincount(
+            self.edge_vn, weights=incoming, minlength=self.block_length,
+        )
+        x_direction = self.channel_bipolar_direction(
+            y, x, parameters["channel_weight"], parameters["bipolar_weight"],
+        ) + check_total
+        q_direction = self.channel_bipolar_direction(
+            y[self.edge_vn], outgoing,
+            parameters["channel_weight"], parameters["bipolar_weight"],
+        ) + check_total[self.edge_vn] - incoming
         eta = parameters["learning_rate"] / np.sqrt(1 + parameters["learning_rate_decay"] * iteration)
-        next_q = outgoing + eta * (total[self.edge_vn] - incoming - parameters["l2"] * outgoing)
-        next_x = x + eta * (total - parameters["l2"] * x)
+        next_q = outgoing + eta * q_direction
+        next_x = x + eta * x_direction
         if not np.all(np.isfinite(next_q)) or not np.all(np.isfinite(next_x)):
             raise FloatingPointError("Non-finite GDMS state")
         return next_x, next_q
@@ -171,7 +179,8 @@ class BinLdpcGdmsDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
         y = llr_in.astype(np.float64, copy=True)
         parameters = {"learning_rate": self.learning_rate,
                       "learning_rate_decay": self.learning_rate_decay,
-                      "alpha": self.alpha, "l2": self.l2}
+                      "channel_weight": self.channel_weight,
+                      "bipolar_weight": self.bipolar_weight}
         state = self.initial_state(y, parameters)
 
         for iteration in range(self.n_iterations): # iteration loop

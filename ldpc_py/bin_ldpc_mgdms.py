@@ -4,17 +4,19 @@ import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
 
 class BinLdpcMgdmsDecoder(BinLdpcDecoderBase):
-    """Momentum gradient-descent min-sum decoder with extrinsic edge states and L2 decay."""
+    """Momentum GDMS with an AWGN channel term and bipolar penalty."""
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
         self.learning_rate = kwargs["learning_rate"]
         self.learning_rate_decay = kwargs["learning_rate_decay"]
-        self.alpha = kwargs["alpha"]
+        self.channel_weight = float(kwargs["channel_weight"])
+        self.bipolar_weight = float(kwargs["bipolar_weight"])
         self.momentum = float(kwargs.get("momentum", 0.0))
 
-        self.l2 = float(kwargs.get("l2", 1.0))
-        if not np.isfinite(self.l2) or self.l2 < 0:
-            raise ValueError("l2 must be finite and non-negative")
+        if not np.isfinite(self.channel_weight) or self.channel_weight <= 0:
+            raise ValueError("channel_weight must be finite and positive")
+        if not np.isfinite(self.bipolar_weight) or self.bipolar_weight < 0:
+            raise ValueError("bipolar_weight must be finite and non-negative")
         if not np.isfinite(self.momentum) or self.momentum < 0 or self.momentum >= 1:
             raise ValueError("momentum must be finite, non-negative, and less than 1")
 
@@ -83,20 +85,22 @@ class BinLdpcMgdmsDecoder(BinLdpcDecoderBase):
         extrinsic_signs = check_signs[self.edge_cn] * edge_signs
         return extrinsic_signs * extrinsic_magnitudes
 
-    def variable_to_check_messages(self, y, check_messages):
-        """Exclude the recipient check from each outgoing edge message."""
-        total = self.objective_gradient(y, check_messages)
-        return total[self.edge_vn] - check_messages
-
-    def objective_gradient(self, y, check_messages):
-        """Channel plus all current check messages, used as the bit-update direction."""
-        return self.alpha * y + np.bincount(
-            self.edge_vn, weights=check_messages, minlength=self.block_length,
+    def channel_bipolar_direction(self, y, state):
+        """Negative gradient of the channel distance and bipolar penalty."""
+        return (
+            self.channel_weight * (y - state)
+            - 4.0 * self.bipolar_weight * state * (state * state - 1.0)
         )
 
     def update_state(self, y, x, outgoing, prev_x, prev_outgoing, iteration):
         incoming = self.check_to_variable_messages(outgoing)
-        total = self.objective_gradient(y, incoming)
+        check_total = np.bincount(
+            self.edge_vn, weights=incoming, minlength=self.block_length,
+        )
+        x_direction = self.channel_bipolar_direction(y, x) + check_total
+        q_direction = self.channel_bipolar_direction(
+            y[self.edge_vn], outgoing,
+        ) + check_total[self.edge_vn] - incoming
         eta = self.learning_rate / np.sqrt(1 + self.learning_rate_decay * iteration)
 
         delta_x = x - prev_x
@@ -104,10 +108,10 @@ class BinLdpcMgdmsDecoder(BinLdpcDecoderBase):
 
         next_q = (
             outgoing
-            + eta * (total[self.edge_vn] - incoming - self.l2 * outgoing)
+            + eta * q_direction
             + self.momentum * delta_q
         )
-        next_x = x + eta * (total - self.l2 * x) + self.momentum * delta_x
+        next_x = x + eta * x_direction + self.momentum * delta_x
         if not np.all(np.isfinite(next_q)) or not np.all(np.isfinite(next_x)):
             raise FloatingPointError("Non-finite MGDMS state")
         return next_x, next_q

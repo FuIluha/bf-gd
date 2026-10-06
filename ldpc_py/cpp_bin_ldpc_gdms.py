@@ -79,8 +79,8 @@ def load_library():
             ctypes.c_uint32,
             ctypes.c_double,
             ctypes.c_double,
-            ctypes.c_double,
-            ctypes.c_double,  # l2
+            ctypes.c_double,  # channel_weight
+            ctypes.c_double,  # bipolar_weight
             ctypes.c_double,  # momentum
             uint32_array,
             uint32_array,
@@ -112,11 +112,13 @@ class CppBinLdpcGdmsDecoder(BinLdpcDecoderBase):
         super().__init__(alist_filename, **kwargs)
         self.learning_rate = float(kwargs["learning_rate"])
         self.learning_rate_decay = float(kwargs["learning_rate_decay"])
-        self.alpha = float(kwargs["alpha"])
+        self.channel_weight = float(kwargs["channel_weight"])
+        self.bipolar_weight = float(kwargs["bipolar_weight"])
 
-        self.l2 = float(kwargs.get("l2", 1.0))
-        if not np.isfinite(self.l2) or self.l2 < 0:
-            raise ValueError("l2 must be finite and non-negative")
+        if not np.isfinite(self.channel_weight) or self.channel_weight <= 0:
+            raise ValueError("channel_weight must be finite and positive")
+        if not np.isfinite(self.bipolar_weight) or self.bipolar_weight < 0:
+            raise ValueError("bipolar_weight must be finite and non-negative")
         if not self.MOMENTUM_ENABLED and "momentum" in kwargs:
             raise ValueError("momentum is only supported by the C++ MGDMS decoder")
         self.momentum = float(kwargs.get("momentum", 0.0)) if self.MOMENTUM_ENABLED else 0.0
@@ -144,8 +146,8 @@ class CppBinLdpcGdmsDecoder(BinLdpcDecoderBase):
             self.n_iterations,
             self.learning_rate,
             self.learning_rate_decay,
-            self.alpha,
-            self.l2,
+            self.channel_weight,
+            self.bipolar_weight,
             self.momentum,
             self.edge_vn,
             self.check_offsets,

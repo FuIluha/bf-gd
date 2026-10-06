@@ -6,6 +6,9 @@ from visualisation.error_by_energy_visualisation.algorithms import BatchDecoderE
 from visualisation.error_by_energy_visualisation.models import FrameBatch
 from ldpc_py.bin_ldpc_ftgdbf import BinLdpcFtgdbfDecoder
 from ldpc_py.bin_ldpc_gdms import BinLdpcGdmsDecoder
+from ldpc_py.cpp_bin_ldpc_gdms import CppBinLdpcGdmsDecoder
+from ldpc_py.bin_ldpc_mgdms import BinLdpcMgdmsDecoder
+from ldpc_py.cpp_bin_ldpc_mgdms import CppBinLdpcMgdmsDecoder
 from ldpc_py.bin_ldpc_egdbf import BinLdpcEgdbfDecoder
 from ldpc_py.cpp_bin_ldpc_egdbf import CppBinLdpcEgdbfDecoder
 from ldpc_py.bin_ldpc_egdbf_v2 import BinLdpcEgdbfV2Decoder
@@ -175,11 +178,23 @@ class DecoderTests(unittest.TestCase):
                 others = q[neighbors[neighbors != edge]]
                 r.append(np.prod(np.where(others < 0, -1, 1)) * np.min(np.abs(others)))
             r = np.asarray(r)
-            g = params["alpha"] * self.batch.received[frame] + np.bincount(
-                self.graph.edge_vn, weights=r, minlength=self.graph.block_length)
-            expected_q = q + params["learning_rate"] * (
-                g[self.graph.edge_vn] - r - params["l2"] * q)
-            expected_x = x + params["learning_rate"] * (g - params["l2"] * x)
+            received = self.batch.received[frame]
+            check_total = np.bincount(
+                self.graph.edge_vn, weights=r, minlength=self.graph.block_length,
+            )
+            x_direction = (
+                params["channel_weight"] * (received - x)
+                - 4.0 * params["bipolar_weight"] * x * (x * x - 1.0)
+                + check_total
+            )
+            edge_received = received[self.graph.edge_vn]
+            q_direction = (
+                params["channel_weight"] * (edge_received - q)
+                - 4.0 * params["bipolar_weight"] * q * (q * q - 1.0)
+                + check_total[self.graph.edge_vn] - r
+            )
+            expected_q = q + params["learning_rate"] * q_direction
+            expected_x = x + params["learning_rate"] * x_direction
             np.testing.assert_allclose(next_state.fields["q"][frame], expected_q)
             np.testing.assert_allclose(next_state.fields["x"][frame], expected_x)
         self.assertEqual(set(observation.categories), {
@@ -191,6 +206,73 @@ class DecoderTests(unittest.TestCase):
         decoder = make_decoder(BinLdpcGdmsDecoder)
         x = np.zeros((1, self.graph.block_length))
         np.testing.assert_array_equal(decoder.hard_decision({"x": x}), np.ones_like(x))
+
+    def test_gdms_channel_bipolar_direction_is_negative_gradient(self):
+        y = np.asarray([-0.4, 0.9, 1.7], dtype=np.float64)
+        state = np.asarray([-1.2, 0.25, 1.4], dtype=np.float64)
+        channel_weight = 1.3
+        bipolar_weight = 0.07
+
+        def energy(values):
+            return (
+                0.5 * channel_weight * np.sum((values - y) ** 2)
+                + bipolar_weight * np.sum((values * values - 1.0) ** 2)
+            )
+
+        epsilon = 1e-6
+        numerical_gradient = np.empty_like(state)
+        for index in range(len(state)):
+            offset = np.zeros_like(state)
+            offset[index] = epsilon
+            numerical_gradient[index] = (
+                energy(state + offset) - energy(state - offset)
+            ) / (2.0 * epsilon)
+        direction = BinLdpcGdmsDecoder.channel_bipolar_direction(
+            y, state, channel_weight, bipolar_weight,
+        )
+        np.testing.assert_allclose(direction, -numerical_gradient, rtol=1e-9, atol=1e-9)
+
+    def test_gdms_python_and_cpp_match_new_potential_step(self):
+        common = dict(
+            pcm=PCM, block_length=PCM.shape[1], n_checks=PCM.shape[0],
+            n_iterations=5, is_systematic=False,
+            learning_rate=0.025, learning_rate_decay=0.03,
+            channel_weight=1.3, bipolar_weight=0.07,
+        )
+        python_decoder = BinLdpcGdmsDecoder(None, **common)
+        cpp_decoder = CppBinLdpcGdmsDecoder(None, **common)
+        for dtype in (np.float32, np.float64):
+            for received in EGDBF_RECEIVED.astype(dtype):
+                with self.subTest(dtype=dtype, received=received.tolist()):
+                    python_output = np.empty_like(received)
+                    cpp_output = np.empty_like(received)
+                    python_iterations = python_decoder.decode(received, python_output)
+                    cpp_iterations = cpp_decoder.decode(received, cpp_output)
+                    self.assertEqual(python_iterations, cpp_iterations)
+                    np.testing.assert_allclose(
+                        python_output, cpp_output, rtol=2e-6, atol=2e-6,
+                    )
+
+    def test_mgdms_python_and_cpp_match_new_potential_step(self):
+        common = dict(
+            pcm=PCM, block_length=PCM.shape[1], n_checks=PCM.shape[0],
+            n_iterations=5, is_systematic=False,
+            learning_rate=0.025, learning_rate_decay=0.03,
+            channel_weight=1.3, bipolar_weight=0.07, momentum=0.4,
+        )
+        python_decoder = BinLdpcMgdmsDecoder(None, **common)
+        cpp_decoder = CppBinLdpcMgdmsDecoder(None, **common)
+        for dtype in (np.float32, np.float64):
+            for received in EGDBF_RECEIVED.astype(dtype):
+                with self.subTest(dtype=dtype, received=received.tolist()):
+                    python_output = np.empty_like(received)
+                    cpp_output = np.empty_like(received)
+                    python_iterations = python_decoder.decode(received, python_output)
+                    cpp_iterations = cpp_decoder.decode(received, cpp_output)
+                    self.assertEqual(python_iterations, cpp_iterations)
+                    np.testing.assert_allclose(
+                        python_output, cpp_output, rtol=2e-6, atol=2e-6,
+                    )
 
     def test_egdbf_without_momentum_matches_zero_profile(self):
         for decoder_type in (BinLdpcEgdbfDecoder, CppBinLdpcEgdbfDecoder):

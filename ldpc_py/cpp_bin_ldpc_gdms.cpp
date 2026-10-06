@@ -5,8 +5,9 @@
 #include <new>
 #include <vector>
 
-// GDMS/MGDMS with extrinsic edge states, L2 decay, optional momentum, and an
-// optional sign-only check update for E-GDBF V4.
+// GDMS/MGDMS with extrinsic edge states, an AWGN channel-distance term, a
+// smooth bipolar penalty, optional momentum, and an optional sign-only check
+// update for E-GDBF V4.
 class CppGdmsDecoder {
  public:
   CppGdmsDecoder(
@@ -15,8 +16,8 @@ class CppGdmsDecoder {
       uint32_t n_iterations,
       double learning_rate,
       double learning_rate_decay,
-      double alpha,
-      double l2,
+      double channel_weight,
+      double bipolar_weight,
       double momentum,
       bool sign_only,
       const uint32_t* edge_vn,
@@ -26,8 +27,8 @@ class CppGdmsDecoder {
         n_iterations_(n_iterations),
         learning_rate_(learning_rate),
         learning_rate_decay_(learning_rate_decay),
-        alpha_(alpha),
-        l2_(l2),
+        channel_weight_(channel_weight),
+        bipolar_weight_(bipolar_weight),
         momentum_(momentum),
         sign_only_(sign_only),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
@@ -64,20 +65,32 @@ class CppGdmsDecoder {
         return iteration;
       }
 
-      CalculateGradient(input);
+      CalculateCheckMessages();
       const double current_learning_rate =
           learning_rate_ /
           std::sqrt(1.0 + learning_rate_decay_ * iteration);
       for (uint32_t edge = 0; edge < edge_vn_.size(); ++edge) {
+        const uint32_t variable = edge_vn_[edge];
+        const double value = variable_messages_[edge];
+        const double channel_direction =
+            channel_weight_ * (static_cast<double>(input[variable]) - value);
+        const double bipolar_direction =
+            -4.0 * bipolar_weight_ * value * (value * value - 1.0);
         next_variable_messages_[edge] = variable_messages_[edge]
             + current_learning_rate * (
-                gradient_[edge_vn_[edge]] - check_messages_[edge]
-                - l2_ * variable_messages_[edge])
+                channel_direction + gradient_[variable] - check_messages_[edge]
+                + bipolar_direction)
             + momentum_ * (variable_messages_[edge] - prev_variable_messages_[edge]);
       }
       for (uint32_t variable = 0; variable < block_length_; ++variable) {
+        const double value = x_[variable];
+        const double channel_direction =
+            channel_weight_ * (static_cast<double>(input[variable]) - value);
+        const double bipolar_direction =
+            -4.0 * bipolar_weight_ * value * (value * value - 1.0);
         next_x_[variable] = x_[variable]
-            + current_learning_rate * (gradient_[variable] - l2_ * x_[variable])
+            + current_learning_rate * (
+                channel_direction + gradient_[variable] + bipolar_direction)
             + momentum_ * (x_[variable] - prev_x_[variable]);
       }
       prev_variable_messages_.swap(variable_messages_);
@@ -108,11 +121,8 @@ class CppGdmsDecoder {
     return true;
   }
 
-  template <typename Float>
-  void CalculateGradient(const Float* input) {
-    for (uint32_t variable = 0; variable < block_length_; ++variable) {
-      gradient_[variable] = alpha_ * static_cast<double>(input[variable]);
-    }
+  void CalculateCheckMessages() {
+    std::fill(gradient_.begin(), gradient_.end(), 0.0);
 
     for (uint32_t check = 0; check < n_checks_; ++check) {
       int sign_product = 1;
@@ -189,8 +199,8 @@ class CppGdmsDecoder {
   uint32_t n_iterations_;
   double learning_rate_;
   double learning_rate_decay_;
-  double alpha_;
-  double l2_;
+  double channel_weight_;
+  double bipolar_weight_;
   double momentum_;
   bool sign_only_;
   std::vector<uint32_t> edge_vn_;
@@ -215,8 +225,8 @@ extern "C" void* cpp_gdms_create(
     uint32_t n_iterations,
     double learning_rate,
     double learning_rate_decay,
-    double alpha,
-    double l2,
+    double channel_weight,
+    double bipolar_weight,
     double momentum,
     const uint32_t* edge_vn,
     const uint32_t* check_offsets) {
@@ -227,8 +237,8 @@ extern "C" void* cpp_gdms_create(
         n_iterations,
         learning_rate,
         learning_rate_decay,
-        alpha,
-        l2,
+        channel_weight,
+        bipolar_weight,
         momentum,
         false,
         edge_vn,
@@ -244,8 +254,8 @@ extern "C" void* cpp_egdbf_v4_create(
     uint32_t n_iterations,
     double learning_rate,
     double learning_rate_decay,
-    double alpha,
-    double l2,
+    double channel_weight,
+    double bipolar_weight,
     double momentum,
     const uint32_t* edge_vn,
     const uint32_t* check_offsets) {
@@ -256,8 +266,8 @@ extern "C" void* cpp_egdbf_v4_create(
         n_iterations,
         learning_rate,
         learning_rate_decay,
-        alpha,
-        l2,
+        channel_weight,
+        bipolar_weight,
         momentum,
         true,
         edge_vn,

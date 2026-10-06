@@ -16,6 +16,25 @@ This repository has
 * multi-bit gradient descent bit-flipping decoder implementation described in http://arxiv.org/abs/0711.0261v2
 * PGDBF with momentum decoder implementation described in https://arxiv.org/pdf/2204.02359
 
+### GDMS
+
+GDMS keeps a real bit state `x[n]` and a real extrinsic edge state
+`q[n->m]`.  The channel and bipolar part of the ascent direction for either
+state `z` is
+
+```
+channel_weight * (y - z)
+- 4 * bipolar_weight * z * (z*z - 1)
+```
+
+This is the negative gradient of
+`channel_weight/2 * ||z-y||^2 + bipolar_weight * sum((z*z-1)^2)`.
+The bit update adds every incident min-sum check message; the edge update
+adds the same sum except for the recipient check.  The former `alpha*y` and
+`-l2*z` terms are no longer used.  Python GDMS/MGDMS, C++ GDMS/MGDMS, and
+the sign-only GDMS core used by E-GDBF V4 share these parameter names and
+this update rule.
+
 ### E-GDBF
 
 E-GDBF stores one persistent hard variable-to-check opinion on every Tanner-
