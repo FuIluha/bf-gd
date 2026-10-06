@@ -5,9 +5,9 @@
 #include <new>
 #include <vector>
 
-// GDMS/MGDMS with extrinsic edge states, an AWGN channel-distance term, a
-// smooth bipolar penalty, optional momentum, and an optional sign-only check
-// update for E-GDBF V4.
+// GDMS/MGDMS with extrinsic edge states, a linear channel score, a smooth
+// bipolar penalty, optional momentum, and an optional sign-only check update
+// for E-GDBF V4.
 class CppGdmsDecoder {
  public:
   CppGdmsDecoder(
@@ -73,7 +73,7 @@ class CppGdmsDecoder {
         const uint32_t variable = edge_vn_[edge];
         const double value = variable_messages_[edge];
         const double channel_direction =
-            channel_weight_ * (static_cast<double>(input[variable]) - value);
+            channel_weight_ * static_cast<double>(input[variable]);
         const double bipolar_direction =
             -4.0 * bipolar_weight_ * value * (value * value - 1.0);
         next_variable_messages_[edge] = variable_messages_[edge]
@@ -85,7 +85,7 @@ class CppGdmsDecoder {
       for (uint32_t variable = 0; variable < block_length_; ++variable) {
         const double value = x_[variable];
         const double channel_direction =
-            channel_weight_ * (static_cast<double>(input[variable]) - value);
+            channel_weight_ * static_cast<double>(input[variable]);
         const double bipolar_direction =
             -4.0 * bipolar_weight_ * value * (value * value - 1.0);
         next_x_[variable] = x_[variable]

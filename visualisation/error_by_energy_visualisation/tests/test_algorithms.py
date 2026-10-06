@@ -183,13 +183,13 @@ class DecoderTests(unittest.TestCase):
                 self.graph.edge_vn, weights=r, minlength=self.graph.block_length,
             )
             x_direction = (
-                params["channel_weight"] * (received - x)
+                params["channel_weight"] * received
                 - 4.0 * params["bipolar_weight"] * x * (x * x - 1.0)
                 + check_total
             )
             edge_received = received[self.graph.edge_vn]
             q_direction = (
-                params["channel_weight"] * (edge_received - q)
+                params["channel_weight"] * edge_received
                 - 4.0 * params["bipolar_weight"] * q * (q * q - 1.0)
                 + check_total[self.graph.edge_vn] - r
             )
@@ -207,16 +207,16 @@ class DecoderTests(unittest.TestCase):
         x = np.zeros((1, self.graph.block_length))
         np.testing.assert_array_equal(decoder.hard_decision({"x": x}), np.ones_like(x))
 
-    def test_gdms_channel_bipolar_direction_is_negative_gradient(self):
+    def test_gdms_channel_bipolar_direction_is_potential_gradient(self):
         y = np.asarray([-0.4, 0.9, 1.7], dtype=np.float64)
         state = np.asarray([-1.2, 0.25, 1.4], dtype=np.float64)
         channel_weight = 1.3
         bipolar_weight = 0.07
 
-        def energy(values):
+        def potential(values):
             return (
-                0.5 * channel_weight * np.sum((values - y) ** 2)
-                + bipolar_weight * np.sum((values * values - 1.0) ** 2)
+                channel_weight * np.dot(y, values)
+                - bipolar_weight * np.sum((values * values - 1.0) ** 2)
             )
 
         epsilon = 1e-6
@@ -225,12 +225,12 @@ class DecoderTests(unittest.TestCase):
             offset = np.zeros_like(state)
             offset[index] = epsilon
             numerical_gradient[index] = (
-                energy(state + offset) - energy(state - offset)
+                potential(state + offset) - potential(state - offset)
             ) / (2.0 * epsilon)
         direction = BinLdpcGdmsDecoder.channel_bipolar_direction(
             y, state, channel_weight, bipolar_weight,
         )
-        np.testing.assert_allclose(direction, -numerical_gradient, rtol=1e-9, atol=1e-9)
+        np.testing.assert_allclose(direction, numerical_gradient, rtol=1e-9, atol=1e-9)
 
     def test_gdms_python_and_cpp_match_new_potential_step(self):
         common = dict(

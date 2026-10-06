@@ -23,12 +23,12 @@ GDMS keeps a real bit state `x[n]` and a real extrinsic edge state
 state `z` is
 
 ```
-channel_weight * (y - z)
+channel_weight * y
 - 4 * bipolar_weight * z * (z*z - 1)
 ```
 
-This is the negative gradient of
-`channel_weight/2 * ||z-y||^2 + bipolar_weight * sum((z*z-1)^2)`.
+This is the gradient of
+`channel_weight * dot(y,z) - bipolar_weight * sum((z*z-1)^2)`.
 The bit update adds every incident min-sum check message; the edge update
 adds the same sum except for the recipient check.  The former `alpha*y` and
 `-l2*z` terms are no longer used.  Python GDMS/MGDMS, C++ GDMS/MGDMS, and

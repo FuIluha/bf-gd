@@ -144,9 +144,9 @@ class BinLdpcGdmsDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
 
     @staticmethod
     def channel_bipolar_direction(y, state, channel_weight, bipolar_weight):
-        """Negative gradient of the channel distance and bipolar penalty."""
+        """Gradient of the linear channel score and bipolar potential."""
         return (
-            channel_weight * (y - state)
+            channel_weight * y
             - 4.0 * bipolar_weight * state * (state * state - 1.0)
         )
 

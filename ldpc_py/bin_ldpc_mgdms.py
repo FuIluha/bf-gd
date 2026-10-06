@@ -86,9 +86,9 @@ class BinLdpcMgdmsDecoder(BinLdpcDecoderBase):
         return extrinsic_signs * extrinsic_magnitudes
 
     def channel_bipolar_direction(self, y, state):
-        """Negative gradient of the channel distance and bipolar penalty."""
+        """Gradient of the linear channel score and bipolar potential."""
         return (
-            self.channel_weight * (y - state)
+            self.channel_weight * y
             - 4.0 * self.bipolar_weight * state * (state * state - 1.0)
         )
 
