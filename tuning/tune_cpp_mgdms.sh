@@ -18,7 +18,7 @@ set -euo pipefail
 if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
     project_dir=$SLURM_SUBMIT_DIR
 else
-    project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 fi
 
 cd "$project_dir"
@@ -35,7 +35,7 @@ if [[ "$*" != *"--full-grid"* ]] && [[ "$*" != *"--momentum-only"* ]]; then
     set -- --momentum-only "$@"
 fi
 
-exec srun "$python_bin" tune_cpp_mgdms.py \
+exec srun "$python_bin" -m tuning.tune_cpp_mgdms \
     --config experiments/experiment_cpp_mgdms.json \
     --workers "${SLURM_CPUS_PER_TASK:-128}" \
     "$@"

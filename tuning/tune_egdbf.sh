@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-# Submit the llr_scale (min-sum) parameter search to Slurm.
+# Submit the C++ E-GDBF parameter search to Slurm.
 
-#SBATCH --job-name=scalems-tune
-#SBATCH --output=logs/tune_scalems_%j.out
-#SBATCH --error=logs/tune_scalems_%j.err
+#SBATCH --job-name=egdbf-tune
+#SBATCH --output=logs/tune_egdbf_%j.out
+#SBATCH --error=logs/tune_egdbf_%j.err
 #SBATCH --partition=amd
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -18,7 +18,7 @@ set -euo pipefail
 if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
     project_dir=$SLURM_SUBMIT_DIR
 else
-    project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 fi
 
 cd "$project_dir"
@@ -31,7 +31,7 @@ if [[ ! -x "$python_bin" ]] || ! "$python_bin" --version >/dev/null 2>&1; then
     exit 1
 fi
 
-exec srun "$python_bin" tune_scalems.py \
-    --config experiment.json \
+exec srun "$python_bin" -m tuning.tune_egdbf \
+    --config experiments/experiment_cpp_egdbf.json \
     --workers "${SLURM_CPUS_PER_TASK:-128}" \
     "$@"

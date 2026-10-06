@@ -1,7 +1,8 @@
-"""Grid-search llr_scale for the layered min-sum LDPC decoder at one SNR point."""
+"""Grid-search EPMGDBF decoder parameters at one SNR point."""
 
 import argparse
 import copy
+import itertools
 import json
 import multiprocessing as mp
 import os
@@ -13,11 +14,14 @@ from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
 from simulator_awgn_python.tools import load_json
 
 
-PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = PROJECT_DIR / "experiment.json"
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_epmgdbf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params.txt"
 
-DEFAULT_LLR_SCALES = np.round(np.arange(0.05, 1.001, 0.05), 3)
+DEFAULT_DELTAS = np.round(np.arange(0.8, 1.201, 0.05), 2)
+DEFAULT_DELTA_ES = np.round(np.arange(0.9, 1.301, 0.05), 2)
+DEFAULT_ALPHAS = np.round(np.arange(1.5, 2.001, 0.05), 2)
+DEFAULT_PROBABILITIES = np.round(np.arange(0.8, 1.001, 0.05), 2)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -37,11 +41,19 @@ def comma_separated_floats(value):
     return values
 
 
+def rho_profile(value):
+    """Parse one comma-separated momentum profile."""
+    values = comma_separated_floats(value)
+    if not values:
+        raise argparse.ArgumentTypeError("rho must not be empty")
+    return values
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Search the h_layered_min_sum llr_scale hyperparameter using FER at a "
-            "fixed SNR. Only the overall best result is reported at the end."
+            "Search EPMGDBF hyperparameters using FER at a fixed SNR. "
+            "The best result is rewritten to params.txt after every improvement."
         )
     )
     parser.add_argument("-c", "--config", type=Path, default=DEFAULT_CONFIG)
@@ -55,8 +67,8 @@ def parse_args():
     parser.add_argument(
         "--max-errors",
         type=int,
-        default=200,
-        help="stop a parameter set after this many frame errors (default: 200)",
+        default=10,
+        help="stop a parameter set after this many frame errors (default: 10)",
     )
     parser.add_argument(
         "--workers",
@@ -68,13 +80,37 @@ def parse_args():
     parser.add_argument(
         "--max-configs",
         type=int,
-        help="evaluate only the first N values; useful for a quick test",
+        help="evaluate only the first N sets; useful for a quick test",
     )
     parser.add_argument(
-        "--llr-scales",
+        "--deltas",
         type=comma_separated_floats,
-        default=DEFAULT_LLR_SCALES,
-        help="comma-separated list of llr_scale values to try",
+        default=DEFAULT_DELTAS,
+    )
+    parser.add_argument(
+        "--delta-es",
+        type=comma_separated_floats,
+        default=DEFAULT_DELTA_ES,
+    )
+    parser.add_argument(
+        "--alphas",
+        type=comma_separated_floats,
+        default=DEFAULT_ALPHAS,
+    )
+    parser.add_argument(
+        "--probabilities",
+        type=comma_separated_floats,
+        default=DEFAULT_PROBABILITIES,
+    )
+    parser.add_argument(
+        "--rho",
+        type=rho_profile,
+        action="append",
+        dest="rho_profiles",
+        help=(
+            "momentum profile, for example --rho 2,2,2,2,2,1,1; "
+            "repeat the option to search several profiles"
+        ),
     )
     return parser.parse_args()
 
@@ -88,28 +124,58 @@ def validate_args(args):
         raise ValueError("--workers must be positive")
     if args.max_configs is not None and args.max_configs <= 0:
         raise ValueError("--max-configs must be positive")
-    if any(scale <= 0 for scale in args.llr_scales):
-        raise ValueError("all llr_scale values must be positive")
+    if any(probability <= 0 or probability > 1 for probability in args.probabilities):
+        raise ValueError("all probabilities must be in (0, 1]")
 
 
 def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
     codec = experiment["codec"]
-    if codec.get("algorithm") != "h_layered_min_sum":
-        raise ValueError("the selected config does not use the h_layered_min_sum decoder")
+    if codec.get("algorithm") != (
+        "erasure probabilistic momentum gradient descent bit-flipping"
+    ):
+        raise ValueError("the selected config does not use the EPMGDBF decoder")
     return experiment, config.get("simulation", {})
 
 
-def parameter_grid(args, base_llr_scale):
-    candidates = [float(base_llr_scale)]
-    for scale in args.llr_scales:
-        candidates.append(float(scale))
+def parameter_grid(args, base_params):
+    rho_profiles = args.rho_profiles or [tuple(base_params["rho"])]
+    baseline = {
+        "delta": float(base_params["delta"]),
+        "delta_e": float(base_params["delta_e"]),
+        "alpha": float(base_params["alpha"]),
+        "p": float(base_params["p"]),
+        "rho": list(base_params["rho"]),
+        "L": int(base_params["L"]),
+    }
+
+    candidates = [baseline]
+    for delta, delta_e, alpha, probability, rho in itertools.product(
+        args.deltas,
+        args.delta_es,
+        args.alphas,
+        args.probabilities,
+        rho_profiles,
+    ):
+        # E_th_e is the wider erasure threshold and must not be below E_th.
+        if delta_e < delta:
+            continue
+        candidates.append(
+            {
+                "delta": delta,
+                "delta_e": delta_e,
+                "alpha": alpha,
+                "p": probability,
+                "rho": list(rho),
+                "L": len(rho),
+            }
+        )
 
     unique_candidates = []
     seen = set()
     for candidate in candidates:
-        key = round(candidate, 6)
+        key = json.dumps(candidate, sort_keys=True)
         if key not in seen:
             seen.add(key)
             unique_candidates.append(candidate)
@@ -125,10 +191,10 @@ def init_worker(base_experiment, snr_db, max_trials, max_errors, seed):
     _SEED = seed
 
 
-def evaluate_candidate(candidate_and_budget):
-    index, llr_scale, max_trials, max_errors = candidate_and_budget
+def evaluate_candidate(index_and_params):
+    index, decoder_params = index_and_params
     experiment_config = copy.deepcopy(_BASE_EXPERIMENT)
-    experiment_config["codec"]["llr_scale"] = llr_scale
+    experiment_config["codec"]["decoder_params"] = decoder_params
     settings = LdpcExperimentSettings(**experiment_config)
     experiment = LdpcExperimentInstance(settings)
 
@@ -136,7 +202,7 @@ def evaluate_candidate(candidate_and_budget):
     bit_errors = 0.0
     iterations = 0
     trials_completed = 0
-    for trial_index in range(max_trials):
+    for trial_index in range(_MAX_TRIALS):
         # Identical seeds make every candidate see the same channel realizations.
         rng = np.random.default_rng([_SEED, trial_index])
         result = experiment.run(_SNR_DB, rng)
@@ -144,12 +210,12 @@ def evaluate_candidate(candidate_and_budget):
         frame_errors += int(result.fe_cum)
         bit_errors += float(result.be_cum)
         iterations += int(result.n_iter)
-        if frame_errors >= max_errors:
+        if frame_errors >= _MAX_ERRORS:
             break
 
     return {
         "index": index,
-        "llr_scale": llr_scale,
+        "decoder_params": decoder_params,
         "trials": trials_completed,
         "frame_errors": frame_errors,
         "fer": frame_errors / trials_completed,
@@ -163,18 +229,20 @@ def result_score(result):
     return result["fer"], result["ber"], result["average_iterations"]
 
 
-def save_best(path, result, args):
+def save_best(path, result, args, completed, total):
     payload = {
         "snr_db": args.snr,
         "max_trials": args.trials,
         "target_frame_errors": args.max_errors,
         "trials": result["trials"],
         "seed": args.seed,
+        "completed_parameter_sets": completed,
+        "total_parameter_sets": total,
         "frame_errors": result["frame_errors"],
         "fer": result["fer"],
         "ber": result["ber"],
         "average_iterations": result["average_iterations"],
-        "llr_scale": result["llr_scale"],
+        "decoder_params": result["decoder_params"],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = path.with_name(f".{path.name}.tmp")
@@ -185,14 +253,15 @@ def save_best(path, result, args):
     temporary_path.replace(path)
 
 
-def print_best(result, total, output_path):
+def print_best(result, completed, total, output_path):
+    params = json.dumps(result["decoder_params"], separators=(",", ":"))
     print(
-        f"BEST of {total} llr_scale values: "
-        f"llr_scale={result['llr_scale']:g} "
+        f"NEW BEST [{completed}/{total}] "
         f"FER={result['fer']:.6g} "
         f"({result['frame_errors']} errors / {result['trials']} trials), "
         f"BER={result['ber']:.6g}, "
         f"avg_iter={result['average_iterations']:.3f}\n"
+        f"params={params}\n"
         f"saved to {output_path}",
         flush=True,
     )
@@ -206,33 +275,26 @@ def default_workers(simulation_config):
     return min(int(simulation_config.get("n_workers", local_cpus)), local_cpus)
 
 
-def evaluate_stage(pool, candidates, max_trials, max_errors):
-    jobs = [
-        (index, llr_scale, max_trials, max_errors)
-        for index, llr_scale in enumerate(candidates)
-    ]
-    return list(pool.imap_unordered(evaluate_candidate, jobs, chunksize=1))
-
-
 def main():
     args = parse_args()
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
-    base_llr_scale = base_experiment["codec"].get("llr_scale", 1.0)
-    candidates = parameter_grid(args, base_llr_scale)
+    base_params = base_experiment["codec"]["decoder_params"]
+    candidates = parameter_grid(args, base_params)
     if args.max_configs is not None:
         candidates = candidates[: args.max_configs]
 
     workers = min(args.workers or default_workers(simulation_config), len(candidates))
     output_path = args.output.resolve()
     print(
-        f"llr_scale search: SNR={args.snr:g} dB, "
-        f"trials={args.trials}/errors={args.max_errors}, "
+        f"EPMGDBF search: SNR={args.snr:g} dB, max_trials={args.trials}, "
+        f"target_errors={args.max_errors}, "
         f"parameter_sets={len(candidates)}, workers={workers}",
         flush=True,
     )
 
+    best_result = None
     context = mp.get_context("spawn")
     with context.Pool(
         processes=workers,
@@ -245,11 +307,18 @@ def main():
             args.seed,
         ),
     ) as pool:
-        results = evaluate_stage(pool, candidates, args.trials, args.max_errors)
+        results = pool.imap_unordered(
+            evaluate_candidate,
+            enumerate(candidates),
+            chunksize=1,
+        )
+        for completed, result in enumerate(results, start=1):
+            if best_result is None or result_score(result) < result_score(best_result):
+                best_result = result
+                save_best(output_path, result, args, completed, len(candidates))
+                print_best(result, completed, len(candidates), output_path)
 
-    best_result = min(results, key=result_score)
-    save_best(output_path, best_result, args)
-    print_best(best_result, len(results), output_path)
+    print(f"Search completed. Best parameters: {output_path}", flush=True)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
 from simulator_awgn_python.tools import load_json
 
 
-PROJECT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_mgdms.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_mgdms.txt"
 

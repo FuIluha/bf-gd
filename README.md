@@ -90,7 +90,7 @@ DASHBOARD_PORT=8890 ./run.sh experiments/experiment.json
 Search the scalar EPMGDBF parameters at SNR 0.5 dB:
 
 ```console
-python3 tune_epmgdbf.py
+python3 -m tuning.tune_epmgdbf
 ```
 
 Every time a better set is found, it is printed and saved to `params.txt` in
@@ -101,19 +101,19 @@ All candidates use the same random seeds. Use `--max-errors`, `--trials`,
 search. For example, a quick smoke test is:
 
 ```console
-python3 tune_epmgdbf.py --trials 10 --workers 1 --max-configs 1
+python3 -m tuning.tune_epmgdbf --trials 10 --workers 1 --max-configs 1
 ```
 
 Submit the full search to Slurm with 64 CPUs:
 
 ```console
-sbatch tune_epmgdbf.sh
+sbatch tuning/tune_epmgdbf.sh
 ```
 
 Additional search arguments are forwarded to Python, for example:
 
 ```console
-sbatch tune_epmgdbf.sh --trials 10000 --max-configs 10
+sbatch tuning/tune_epmgdbf.sh --trials 10000 --max-configs 10
 ```
 
 ## Tools
