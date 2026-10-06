@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 
-# Submit the momentum GDMS parameter search to Slurm.
-
-#SBATCH --job-name=mgdms-tune
-#SBATCH --output=logs/tune_mgdms_%j.out
-#SBATCH --error=logs/tune_mgdms_%j.err
+#SBATCH --job-name=sigmoid1-tune
+#SBATCH --output=logs/tune_sigmoid1_%j.out
+#SBATCH --error=logs/tune_sigmoid1_%j.err
 #SBATCH --partition=amd
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=128
 #SBATCH --mem=32G
-#SBATCH --time=24:00:00
+#SBATCH --time=04:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 
 set -euo pipefail
@@ -18,7 +16,7 @@ set -euo pipefail
 if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
     project_dir=$SLURM_SUBMIT_DIR
 else
-    project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 fi
 
 cd "$project_dir"
@@ -31,11 +29,6 @@ if [[ ! -x "$python_bin" ]] || ! "$python_bin" --version >/dev/null 2>&1; then
     exit 1
 fi
 
-if [[ "$*" != *"--full-grid"* ]] && [[ "$*" != *"--momentum-only"* ]]; then
-    set -- --momentum-only "$@"
-fi
-
-exec srun "$python_bin" tune_mgdms.py \
-    --config experiments/experiment_mgdms.json \
+exec srun "$python_bin" -m tuning.tune_sigmoid1 \
     --workers "${SLURM_CPUS_PER_TASK:-128}" \
     "$@"

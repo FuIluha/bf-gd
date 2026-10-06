@@ -1,4 +1,4 @@
-"""Grid-search the momentum gradient-descent min-sum parameters at one SNR point."""
+"""Grid-search the C++ E-GDBF parameters at one SNR point."""
 
 import argparse
 import copy
@@ -11,18 +11,20 @@ from pathlib import Path
 import numpy as np
 
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
+from ldpc_py.cpp_bin_ldpc_egdbf import lib_compile as egdbf_compile
 from simulator_awgn_python.tools import load_json
 
 
-PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_mgdms.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_mgdms.txt"
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_egdbf.json"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf.txt"
 
-DEFAULT_LEARNING_RATES = (0.75,)
-DEFAULT_LEARNING_RATE_DECAYS = (0.03,)
-DEFAULT_ALPHAS = (2.0,)
-DEFAULT_L2 = (1.2,)
-DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.95 + 1e-9, 0.05), 6))
+# Dense search: 50 channel weights and all unique two-level, length-7
+# momentum profiles generated from the ranges below (63,250 sets total).
+DEFAULT_ALPHAS = tuple(np.round(np.arange(0.1, 5.001, 0.1), 2))
+DEFAULT_RHO_EARLY_VALUES = tuple(np.round(np.arange(0.0, 4.001, 0.25), 2))
+DEFAULT_RHO_LATE_VALUES = tuple(np.round(np.arange(0.0, 3.001, 0.25), 2))
+DEFAULT_RHO_SPLITS = (1, 2, 3, 4, 5, 6, 7)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -41,68 +43,70 @@ def comma_separated_floats(value):
     return values
 
 
+def comma_separated_ints(value):
+    try:
+        values = tuple(int(item.strip()) for item in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid integer list: {value!r}") from exc
+    if not values:
+        raise argparse.ArgumentTypeError("the list must not be empty")
+    return values
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Search momentum GDMS hyperparameters using FER at a fixed SNR. "
+            "Search C++ E-GDBF hyperparameters using FER at a fixed SNR. "
             "Every new best result is saved immediately."
         )
     )
     parser.add_argument("-c", "--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--snr", type=float, default=-1.0)
-    parser.add_argument("--trials", type=int, default=100_000_000)
-    parser.add_argument("--max-errors", type=int, default=100)
+    parser.add_argument("--snr", type=float, default=-0.2)
+    parser.add_argument("--trials", type=int, default=10_000_000)
+    parser.add_argument("--max-errors", type=int, default=50)
     parser.add_argument("--workers", type=int)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-configs", type=int)
     parser.add_argument(
-        "--quick-test",
-        action="store_true",
-        help="Run a tiny smoke test with a few momentum values only, useful for checking that the decoder runs before a full sweep.",
-    )
-    parser.add_argument(
-        "--full-grid",
-        dest="full_grid",
-        action="store_true",
-        help="Enumerate learning_rate, learning_rate_decay, alpha, l2 and momentum together. By default only momentum is swept while the other settings stay fixed from the JSON.",
-    )
-    parser.add_argument(
-        "--momentum-only",
-        dest="full_grid",
-        action="store_false",
-        default=False,
-        help="(default) Keep all decoder parameters from the experiment JSON fixed and sweep only momentum.",
-    )
-    parser.add_argument(
-        "--learning-rates",
-        type=comma_separated_floats,
-        default=DEFAULT_LEARNING_RATES,
-    )
-    parser.add_argument(
-        "--learning-rate-decays",
-        type=comma_separated_floats,
-        default=DEFAULT_LEARNING_RATE_DECAYS,
-    )
-    parser.add_argument(
         "--alphas",
         type=comma_separated_floats,
         default=DEFAULT_ALPHAS,
     )
-    parser.add_argument("--l2-values", type=comma_separated_floats, default=DEFAULT_L2)
     parser.add_argument(
-        "--momentum-values",
+        "--rho",
         type=comma_separated_floats,
-        default=DEFAULT_MOMENTUM_VALUES,
+        action="append",
+        dest="rho_profiles",
+        help=(
+            "momentum profile, for example --rho 0.5,0.5,0.5,0.5,0.5,0.25,0.25; "
+            "repeat the option to search several profiles"
+        ),
+    )
+    parser.add_argument(
+        "--rho-early-values",
+        type=comma_separated_floats,
+        default=DEFAULT_RHO_EARLY_VALUES,
+        help="values before the momentum-profile split",
+    )
+    parser.add_argument(
+        "--rho-late-values",
+        type=comma_separated_floats,
+        default=DEFAULT_RHO_LATE_VALUES,
+        help="values from the momentum-profile split onward",
+    )
+    parser.add_argument(
+        "--rho-splits",
+        type=comma_separated_ints,
+        default=DEFAULT_RHO_SPLITS,
+        help="counts of leading entries using the early rho value",
     )
     return parser.parse_args()
 
 
 def validate_args(args):
-    if any(not np.isfinite(v) or v < 0 for v in args.l2_values):
-        raise ValueError("l2 values must be finite and non-negative")
-    if any(not np.isfinite(v) or v < 0 or v >= 1 for v in args.momentum_values):
-        raise ValueError("momentum values must be finite, non-negative, and strictly less than 1")
+    if not np.isfinite(args.snr):
+        raise ValueError("--snr must be finite")
     if args.trials <= 0:
         raise ValueError("--trials must be positive")
     if args.max_errors <= 0:
@@ -111,68 +115,75 @@ def validate_args(args):
         raise ValueError("--workers must be positive")
     if args.max_configs is not None and args.max_configs <= 0:
         raise ValueError("--max-configs must be positive")
-    if any(value <= 0 for value in args.learning_rates):
-        raise ValueError("all learning rates must be positive")
-    if any(value < 0 for value in args.learning_rate_decays):
-        raise ValueError("all learning-rate decays must be non-negative")
+    if any(not np.isfinite(value) or value <= 0 for value in args.alphas):
+        raise ValueError("all alphas must be finite and positive")
+    if any(
+        not np.isfinite(value) or value < 0
+        for value in args.rho_early_values + args.rho_late_values
+    ):
+        raise ValueError("generated rho values must be finite and non-negative")
+    if any(split <= 0 for split in args.rho_splits):
+        raise ValueError("rho splits must be positive")
+    for profile in args.rho_profiles or ():
+        if not profile or any(not np.isfinite(value) for value in profile):
+            raise ValueError("rho profiles must be non-empty and finite")
 
 
 def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
-    if experiment["codec"].get("algorithm") not in {
-        "momentum gradient descent min-sum",
-        "cpp momentum gradient descent min-sum",
-    }:
-        raise ValueError("the selected config must use the Python or C++ momentum GDMS decoder")
+    if experiment["codec"].get("algorithm") != (
+        "cpp edge-wise gradient descent bit-flipping"
+    ):
+        raise ValueError("the selected config must use the C++ E-GDBF decoder")
     return experiment, config.get("simulation", {})
 
 
-def parameter_grid(args, base_params):
-    baseline = {
-        "learning_rate": float(base_params["learning_rate"]),
-        "learning_rate_decay": float(base_params["learning_rate_decay"]),
-        "alpha": float(base_params["alpha"]),
-        "l2": float(base_params.get("l2", 1.0)),
-        "momentum": float(base_params.get("momentum", 0.0)),
-    }
+def generated_rho_profiles(args, momentum_length):
+    if args.rho_profiles:
+        return args.rho_profiles
+    if any(split > momentum_length for split in args.rho_splits):
+        raise ValueError("rho splits must not exceed the configured L")
 
-    if not args.full_grid:
-        candidates = []
-        for momentum in args.momentum_values:
-            candidates.append(
-                {
-                    "learning_rate": baseline["learning_rate"],
-                    "learning_rate_decay": baseline["learning_rate_decay"],
-                    "alpha": baseline["alpha"],
-                    "l2": baseline["l2"],
-                    "momentum": momentum,
-                }
-            )
-        return candidates
-
-    candidates = [baseline]
-    for values in itertools.product(
-        args.learning_rates,
-        args.learning_rate_decays,
-        args.alphas,
-        args.l2_values,
-        args.momentum_values,
+    profiles = []
+    seen = set()
+    for early, late, split in itertools.product(
+        args.rho_early_values,
+        args.rho_late_values,
+        args.rho_splits,
     ):
-        candidates.append(
-            {
-                "learning_rate": values[0],
-                "learning_rate_decay": values[1],
-                "alpha": values[2],
-                "l2": values[3],
-                "momentum": values[4],
-            }
+        profile = (
+            (float(early),) * split
+            + (float(late),) * (momentum_length - split)
         )
+        if profile not in seen:
+            seen.add(profile)
+            profiles.append(profile)
+    return profiles
+
+
+def parameter_grid(args, base_params):
+    rho_profiles = generated_rho_profiles(args, int(base_params["L"]))
+    baseline = {
+        "alpha": float(base_params["alpha"]),
+        "rho": [float(value) for value in base_params["rho"]],
+        "L": int(base_params["L"]),
+    }
+    candidates = [baseline]
+    for rho, alpha in itertools.product(
+        rho_profiles,
+        args.alphas,
+    ):
+        candidates.append({
+            "alpha": float(alpha),
+            "rho": [float(value) for value in rho],
+            "L": len(rho),
+        })
 
     unique_candidates = []
     seen = set()
     for candidate in candidates:
-        key = tuple(sorted(candidate.items()))
+        key = json.dumps(candidate, sort_keys=True)
         if key not in seen:
             seen.add(key)
             unique_candidates.append(candidate)
@@ -201,15 +212,9 @@ def evaluate_candidate(index_and_params):
     iterations = 0
     trials_completed = 0
     for trial_index in range(_MAX_TRIALS):
+        # Every candidate receives the same independent channel-frame seeds.
         rng = np.random.default_rng([_SEED, trial_index])
-        try:
-            result = experiment.run(_SNR_DB, rng)
-        except FloatingPointError:
-            return {
-                "index": index,
-                "decoder_params": decoder_params,
-                "invalid": True,
-            }
+        result = experiment.run(_SNR_DB, rng)
         trials_completed += 1
         frame_errors += int(result.fe_cum)
         bit_errors += float(result.be_cum)
@@ -220,7 +225,6 @@ def evaluate_candidate(index_and_params):
     return {
         "index": index,
         "decoder_params": decoder_params,
-        "invalid": False,
         "trials": trials_completed,
         "frame_errors": frame_errors,
         "fer": frame_errors / trials_completed,
@@ -267,13 +271,10 @@ def default_workers(simulation_config):
 
 def main():
     args = parse_args()
-    if args.quick_test:
-        args.trials = min(args.trials, 5_000)
-        args.max_errors = min(args.max_errors, 3)
-        args.max_configs = min(args.max_configs or 5, 5)
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
+    egdbf_compile()
     candidates = parameter_grid(
         args,
         base_experiment["codec"]["decoder_params"],
@@ -284,7 +285,7 @@ def main():
     workers = min(args.workers or default_workers(simulation_config), len(candidates))
     output_path = args.output.resolve()
     print(
-        f"MGDMS search: SNR={args.snr:g} dB, "
+        f"E-GDBF search: SNR={args.snr:g} dB, "
         f"max_trials={args.trials}, target_errors={args.max_errors}, "
         f"parameter_sets={len(candidates)}, workers={workers}",
         flush=True,
@@ -312,21 +313,6 @@ def main():
         for completed, result in enumerate(results, start=1):
             with output_path.with_suffix(".jsonl").open("a", encoding="utf-8") as log:
                 log.write(json.dumps(result) + "\n")
-            if result["invalid"]:
-                params = json.dumps(result["decoder_params"], separators=(",", ":"))
-                print(
-                    f"INVALID [{completed}/{len(candidates)}] params={params}",
-                    flush=True,
-                )
-                continue
-            status = (
-                f"PROGRESS [{completed}/{len(candidates)}] "
-                f"FER={result['fer']:.6g}, "
-                f"BER={result['ber']:.6g}, "
-                f"avg_iter={result['average_iterations']:.3f}, "
-                f"params={json.dumps(result['decoder_params'], separators=(',', ':'))}"
-            )
-            print(status, flush=True)
             if best_result is None or result_score(result) < result_score(best_result):
                 best_result = result
                 save_best(output_path, result, args, completed, len(candidates))

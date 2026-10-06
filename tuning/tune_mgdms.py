@@ -1,4 +1,4 @@
-"""Grid-search the C++ gradient-descent min-sum parameters at one SNR point."""
+"""Grid-search the momentum gradient-descent min-sum parameters at one SNR point."""
 
 import argparse
 import copy
@@ -11,19 +11,18 @@ from pathlib import Path
 import numpy as np
 
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
-from ldpc_py.cpp_bin_ldpc_gdms import lib_compile as gdms_compile
 from simulator_awgn_python.tools import load_json
 
 
-PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gdms.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gdms_l2.txt"
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_mgdms.json"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_mgdms.txt"
 
-# 6 * 4 * 5 * 7 = 840 combinations, including ordinary min-sum dynamics.
-DEFAULT_LEARNING_RATES = (0.05, 0.1, 0.25, 0.5, 0.75, 1.0)
-DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.05, 0.1)
-DEFAULT_ALPHAS = (0.25, 0.5, 1.0, 2.0, 4.0)
-DEFAULT_L2 = (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
+DEFAULT_LEARNING_RATES = (0.75,)
+DEFAULT_LEARNING_RATE_DECAYS = (0.03,)
+DEFAULT_ALPHAS = (2.0,)
+DEFAULT_L2 = (1.2,)
+DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.95 + 1e-9, 0.05), 6))
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -45,7 +44,7 @@ def comma_separated_floats(value):
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Search C++ GDMS hyperparameters using FER at a fixed SNR. "
+            "Search momentum GDMS hyperparameters using FER at a fixed SNR. "
             "Every new best result is saved immediately."
         )
     )
@@ -57,6 +56,24 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-configs", type=int)
+    parser.add_argument(
+        "--quick-test",
+        action="store_true",
+        help="Run a tiny smoke test with a few momentum values only, useful for checking that the decoder runs before a full sweep.",
+    )
+    parser.add_argument(
+        "--full-grid",
+        dest="full_grid",
+        action="store_true",
+        help="Enumerate learning_rate, learning_rate_decay, alpha, l2 and momentum together. By default only momentum is swept while the other settings stay fixed from the JSON.",
+    )
+    parser.add_argument(
+        "--momentum-only",
+        dest="full_grid",
+        action="store_false",
+        default=False,
+        help="(default) Keep all decoder parameters from the experiment JSON fixed and sweep only momentum.",
+    )
     parser.add_argument(
         "--learning-rates",
         type=comma_separated_floats,
@@ -73,12 +90,19 @@ def parse_args():
         default=DEFAULT_ALPHAS,
     )
     parser.add_argument("--l2-values", type=comma_separated_floats, default=DEFAULT_L2)
+    parser.add_argument(
+        "--momentum-values",
+        type=comma_separated_floats,
+        default=DEFAULT_MOMENTUM_VALUES,
+    )
     return parser.parse_args()
 
 
 def validate_args(args):
     if any(not np.isfinite(v) or v < 0 for v in args.l2_values):
         raise ValueError("l2 values must be finite and non-negative")
+    if any(not np.isfinite(v) or v < 0 or v >= 1 for v in args.momentum_values):
+        raise ValueError("momentum values must be finite, non-negative, and strictly less than 1")
     if args.trials <= 0:
         raise ValueError("--trials must be positive")
     if args.max_errors <= 0:
@@ -96,8 +120,11 @@ def validate_args(args):
 def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
-    if experiment["codec"].get("algorithm") != "cpp gradient descent min-sum":
-        raise ValueError("the selected config must use the C++ GDMS decoder")
+    if experiment["codec"].get("algorithm") not in {
+        "momentum gradient descent min-sum",
+        "cpp momentum gradient descent min-sum",
+    }:
+        raise ValueError("the selected config must use the Python or C++ momentum GDMS decoder")
     return experiment, config.get("simulation", {})
 
 
@@ -107,25 +134,45 @@ def parameter_grid(args, base_params):
         "learning_rate_decay": float(base_params["learning_rate_decay"]),
         "alpha": float(base_params["alpha"]),
         "l2": float(base_params.get("l2", 1.0)),
+        "momentum": float(base_params.get("momentum", 0.0)),
     }
+
+    if not args.full_grid:
+        candidates = []
+        for momentum in args.momentum_values:
+            candidates.append(
+                {
+                    "learning_rate": baseline["learning_rate"],
+                    "learning_rate_decay": baseline["learning_rate_decay"],
+                    "alpha": baseline["alpha"],
+                    "l2": baseline["l2"],
+                    "momentum": momentum,
+                }
+            )
+        return candidates
+
     candidates = [baseline]
     for values in itertools.product(
         args.learning_rates,
         args.learning_rate_decays,
         args.alphas,
         args.l2_values,
+        args.momentum_values,
     ):
-        candidates.append({
-            "learning_rate": values[0],
-            "learning_rate_decay": values[1],
-            "alpha": values[2],
-            "l2": values[3],
-        })
+        candidates.append(
+            {
+                "learning_rate": values[0],
+                "learning_rate_decay": values[1],
+                "alpha": values[2],
+                "l2": values[3],
+                "momentum": values[4],
+            }
+        )
 
     unique_candidates = []
     seen = set()
     for candidate in candidates:
-        key = tuple(candidate.items())
+        key = tuple(sorted(candidate.items()))
         if key not in seen:
             seen.add(key)
             unique_candidates.append(candidate)
@@ -220,10 +267,13 @@ def default_workers(simulation_config):
 
 def main():
     args = parse_args()
+    if args.quick_test:
+        args.trials = min(args.trials, 5_000)
+        args.max_errors = min(args.max_errors, 3)
+        args.max_configs = min(args.max_configs or 5, 5)
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
-    gdms_compile()
     candidates = parameter_grid(
         args,
         base_experiment["codec"]["decoder_params"],
@@ -234,7 +284,7 @@ def main():
     workers = min(args.workers or default_workers(simulation_config), len(candidates))
     output_path = args.output.resolve()
     print(
-        f"GDMS search: SNR={args.snr:g} dB, "
+        f"MGDMS search: SNR={args.snr:g} dB, "
         f"max_trials={args.trials}, target_errors={args.max_errors}, "
         f"parameter_sets={len(candidates)}, workers={workers}",
         flush=True,
@@ -269,6 +319,14 @@ def main():
                     flush=True,
                 )
                 continue
+            status = (
+                f"PROGRESS [{completed}/{len(candidates)}] "
+                f"FER={result['fer']:.6g}, "
+                f"BER={result['ber']:.6g}, "
+                f"avg_iter={result['average_iterations']:.3f}, "
+                f"params={json.dumps(result['decoder_params'], separators=(',', ':'))}"
+            )
+            print(status, flush=True)
             if best_result is None or result_score(result) < result_score(best_result):
                 best_result = result
                 save_best(output_path, result, args, completed, len(candidates))

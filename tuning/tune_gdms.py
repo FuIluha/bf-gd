@@ -1,4 +1,4 @@
-"""Grid-search EPMGDBF decoder parameters at one SNR point."""
+"""Grid-search the C++ gradient-descent min-sum parameters at one SNR point."""
 
 import argparse
 import copy
@@ -11,17 +11,19 @@ from pathlib import Path
 import numpy as np
 
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
+from ldpc_py.cpp_bin_ldpc_gdms import lib_compile as gdms_compile
 from simulator_awgn_python.tools import load_json
 
 
-PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_epmgdbf.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params.txt"
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gdms.json"
+DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gdms_l2.txt"
 
-DEFAULT_DELTAS = np.round(np.arange(0.8, 1.201, 0.05), 2)
-DEFAULT_DELTA_ES = np.round(np.arange(0.9, 1.301, 0.05), 2)
-DEFAULT_ALPHAS = np.round(np.arange(1.5, 2.001, 0.05), 2)
-DEFAULT_PROBABILITIES = np.round(np.arange(0.8, 1.001, 0.05), 2)
+# 6 * 4 * 5 * 7 = 840 combinations, including ordinary min-sum dynamics.
+DEFAULT_LEARNING_RATES = (0.05, 0.1, 0.25, 0.5, 0.75, 1.0)
+DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.05, 0.1)
+DEFAULT_ALPHAS = (0.25, 0.5, 1.0, 2.0, 4.0)
+DEFAULT_L2 = (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -31,7 +33,6 @@ _SEED = None
 
 
 def comma_separated_floats(value):
-    """Parse a comma-separated command-line list of floats."""
     try:
         values = tuple(float(item.strip()) for item in value.split(","))
     except ValueError as exc:
@@ -41,81 +42,43 @@ def comma_separated_floats(value):
     return values
 
 
-def rho_profile(value):
-    """Parse one comma-separated momentum profile."""
-    values = comma_separated_floats(value)
-    if not values:
-        raise argparse.ArgumentTypeError("rho must not be empty")
-    return values
-
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Search EPMGDBF hyperparameters using FER at a fixed SNR. "
-            "The best result is rewritten to params.txt after every improvement."
+            "Search C++ GDMS hyperparameters using FER at a fixed SNR. "
+            "Every new best result is saved immediately."
         )
     )
     parser.add_argument("-c", "--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--snr", type=float, default=0.5)
-    parser.add_argument(
-        "--trials",
-        type=int,
-        default=10_000_000,
-        help="maximum frames for every parameter set (default: 10000000)",
-    )
-    parser.add_argument(
-        "--max-errors",
-        type=int,
-        default=10,
-        help="stop a parameter set after this many frame errors (default: 10)",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        help="parallel parameter sets (default: allocated Slurm CPUs or local CPUs)",
-    )
+    parser.add_argument("--snr", type=float, default=-1.0)
+    parser.add_argument("--trials", type=int, default=100_000_000)
+    parser.add_argument("--max-errors", type=int, default=100)
+    parser.add_argument("--workers", type=int)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--max-configs", type=int)
     parser.add_argument(
-        "--max-configs",
-        type=int,
-        help="evaluate only the first N sets; useful for a quick test",
+        "--learning-rates",
+        type=comma_separated_floats,
+        default=DEFAULT_LEARNING_RATES,
     )
     parser.add_argument(
-        "--deltas",
+        "--learning-rate-decays",
         type=comma_separated_floats,
-        default=DEFAULT_DELTAS,
-    )
-    parser.add_argument(
-        "--delta-es",
-        type=comma_separated_floats,
-        default=DEFAULT_DELTA_ES,
+        default=DEFAULT_LEARNING_RATE_DECAYS,
     )
     parser.add_argument(
         "--alphas",
         type=comma_separated_floats,
         default=DEFAULT_ALPHAS,
     )
-    parser.add_argument(
-        "--probabilities",
-        type=comma_separated_floats,
-        default=DEFAULT_PROBABILITIES,
-    )
-    parser.add_argument(
-        "--rho",
-        type=rho_profile,
-        action="append",
-        dest="rho_profiles",
-        help=(
-            "momentum profile, for example --rho 2,2,2,2,2,1,1; "
-            "repeat the option to search several profiles"
-        ),
-    )
+    parser.add_argument("--l2-values", type=comma_separated_floats, default=DEFAULT_L2)
     return parser.parse_args()
 
 
 def validate_args(args):
+    if any(not np.isfinite(v) or v < 0 for v in args.l2_values):
+        raise ValueError("l2 values must be finite and non-negative")
     if args.trials <= 0:
         raise ValueError("--trials must be positive")
     if args.max_errors <= 0:
@@ -124,58 +87,45 @@ def validate_args(args):
         raise ValueError("--workers must be positive")
     if args.max_configs is not None and args.max_configs <= 0:
         raise ValueError("--max-configs must be positive")
-    if any(probability <= 0 or probability > 1 for probability in args.probabilities):
-        raise ValueError("all probabilities must be in (0, 1]")
+    if any(value <= 0 for value in args.learning_rates):
+        raise ValueError("all learning rates must be positive")
+    if any(value < 0 for value in args.learning_rate_decays):
+        raise ValueError("all learning-rate decays must be non-negative")
 
 
 def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
-    codec = experiment["codec"]
-    if codec.get("algorithm") != (
-        "erasure probabilistic momentum gradient descent bit-flipping"
-    ):
-        raise ValueError("the selected config does not use the EPMGDBF decoder")
+    if experiment["codec"].get("algorithm") != "cpp gradient descent min-sum":
+        raise ValueError("the selected config must use the C++ GDMS decoder")
     return experiment, config.get("simulation", {})
 
 
 def parameter_grid(args, base_params):
-    rho_profiles = args.rho_profiles or [tuple(base_params["rho"])]
     baseline = {
-        "delta": float(base_params["delta"]),
-        "delta_e": float(base_params["delta_e"]),
+        "learning_rate": float(base_params["learning_rate"]),
+        "learning_rate_decay": float(base_params["learning_rate_decay"]),
         "alpha": float(base_params["alpha"]),
-        "p": float(base_params["p"]),
-        "rho": list(base_params["rho"]),
-        "L": int(base_params["L"]),
+        "l2": float(base_params.get("l2", 1.0)),
     }
-
     candidates = [baseline]
-    for delta, delta_e, alpha, probability, rho in itertools.product(
-        args.deltas,
-        args.delta_es,
+    for values in itertools.product(
+        args.learning_rates,
+        args.learning_rate_decays,
         args.alphas,
-        args.probabilities,
-        rho_profiles,
+        args.l2_values,
     ):
-        # E_th_e is the wider erasure threshold and must not be below E_th.
-        if delta_e < delta:
-            continue
-        candidates.append(
-            {
-                "delta": delta,
-                "delta_e": delta_e,
-                "alpha": alpha,
-                "p": probability,
-                "rho": list(rho),
-                "L": len(rho),
-            }
-        )
+        candidates.append({
+            "learning_rate": values[0],
+            "learning_rate_decay": values[1],
+            "alpha": values[2],
+            "l2": values[3],
+        })
 
     unique_candidates = []
     seen = set()
     for candidate in candidates:
-        key = json.dumps(candidate, sort_keys=True)
+        key = tuple(candidate.items())
         if key not in seen:
             seen.add(key)
             unique_candidates.append(candidate)
@@ -195,17 +145,24 @@ def evaluate_candidate(index_and_params):
     index, decoder_params = index_and_params
     experiment_config = copy.deepcopy(_BASE_EXPERIMENT)
     experiment_config["codec"]["decoder_params"] = decoder_params
-    settings = LdpcExperimentSettings(**experiment_config)
-    experiment = LdpcExperimentInstance(settings)
+    experiment = LdpcExperimentInstance(
+        LdpcExperimentSettings(**experiment_config)
+    )
 
     frame_errors = 0
     bit_errors = 0.0
     iterations = 0
     trials_completed = 0
     for trial_index in range(_MAX_TRIALS):
-        # Identical seeds make every candidate see the same channel realizations.
         rng = np.random.default_rng([_SEED, trial_index])
-        result = experiment.run(_SNR_DB, rng)
+        try:
+            result = experiment.run(_SNR_DB, rng)
+        except FloatingPointError:
+            return {
+                "index": index,
+                "decoder_params": decoder_params,
+                "invalid": True,
+            }
         trials_completed += 1
         frame_errors += int(result.fe_cum)
         bit_errors += float(result.be_cum)
@@ -216,6 +173,7 @@ def evaluate_candidate(index_and_params):
     return {
         "index": index,
         "decoder_params": decoder_params,
+        "invalid": False,
         "trials": trials_completed,
         "frame_errors": frame_errors,
         "fer": frame_errors / trials_completed,
@@ -225,7 +183,6 @@ def evaluate_candidate(index_and_params):
 
 
 def result_score(result):
-    """FER is primary; BER and decoding work break statistically equal ties."""
     return result["fer"], result["ber"], result["average_iterations"]
 
 
@@ -253,20 +210,6 @@ def save_best(path, result, args, completed, total):
     temporary_path.replace(path)
 
 
-def print_best(result, completed, total, output_path):
-    params = json.dumps(result["decoder_params"], separators=(",", ":"))
-    print(
-        f"NEW BEST [{completed}/{total}] "
-        f"FER={result['fer']:.6g} "
-        f"({result['frame_errors']} errors / {result['trials']} trials), "
-        f"BER={result['ber']:.6g}, "
-        f"avg_iter={result['average_iterations']:.3f}\n"
-        f"params={params}\n"
-        f"saved to {output_path}",
-        flush=True,
-    )
-
-
 def default_workers(simulation_config):
     allocated_cpus = os.environ.get("SLURM_CPUS_PER_TASK")
     if allocated_cpus:
@@ -280,20 +223,24 @@ def main():
     validate_args(args)
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
-    base_params = base_experiment["codec"]["decoder_params"]
-    candidates = parameter_grid(args, base_params)
+    gdms_compile()
+    candidates = parameter_grid(
+        args,
+        base_experiment["codec"]["decoder_params"],
+    )
     if args.max_configs is not None:
-        candidates = candidates[: args.max_configs]
+        candidates = candidates[:args.max_configs]
 
     workers = min(args.workers or default_workers(simulation_config), len(candidates))
     output_path = args.output.resolve()
     print(
-        f"EPMGDBF search: SNR={args.snr:g} dB, max_trials={args.trials}, "
-        f"target_errors={args.max_errors}, "
+        f"GDMS search: SNR={args.snr:g} dB, "
+        f"max_trials={args.trials}, target_errors={args.max_errors}, "
         f"parameter_sets={len(candidates)}, workers={workers}",
         flush=True,
     )
 
+    output_path.with_suffix(".jsonl").write_text("", encoding="utf-8")
     best_result = None
     context = mp.get_context("spawn")
     with context.Pool(
@@ -313,10 +260,30 @@ def main():
             chunksize=1,
         )
         for completed, result in enumerate(results, start=1):
+            with output_path.with_suffix(".jsonl").open("a", encoding="utf-8") as log:
+                log.write(json.dumps(result) + "\n")
+            if result["invalid"]:
+                params = json.dumps(result["decoder_params"], separators=(",", ":"))
+                print(
+                    f"INVALID [{completed}/{len(candidates)}] params={params}",
+                    flush=True,
+                )
+                continue
             if best_result is None or result_score(result) < result_score(best_result):
                 best_result = result
                 save_best(output_path, result, args, completed, len(candidates))
-                print_best(result, completed, len(candidates), output_path)
+                params = json.dumps(result["decoder_params"], separators=(",", ":"))
+                print(
+                    f"NEW BEST [{completed}/{len(candidates)}] "
+                    f"FER={result['fer']:.6g} "
+                    f"({result['frame_errors']} errors / "
+                    f"{result['trials']} trials), "
+                    f"BER={result['ber']:.6g}, "
+                    f"avg_iter={result['average_iterations']:.3f}\n"
+                    f"params={params}\n"
+                    f"saved to {output_path}",
+                    flush=True,
+                )
 
     print(f"Search completed. Best parameters: {output_path}", flush=True)
 
