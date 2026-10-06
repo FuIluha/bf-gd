@@ -1,4 +1,4 @@
-"""Grid-search C++ E-GDBF parameters at one SNR point."""
+"""Grid-search the C++ E-GDBF parameters at one SNR point."""
 
 import argparse
 import copy
@@ -18,13 +18,13 @@ from simulator_awgn_python.tools import load_json
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_egdbf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_egdbf.txt"
-V3_ALGORITHM = "cpp edge-wise gradient descent bit-flipping v3"
 
-DEFAULT_ALPHAS = tuple(np.round(np.arange(1.0, 2.001, 0.1), 2))
-DEFAULT_DELTAS = tuple(np.round(np.arange(1.0, 3.001, 0.1), 2))
-DEFAULT_THETAS = tuple(np.round(np.arange(-3.0, 1.001, 0.1), 2))
-DEFAULT_PROBABILITIES = (0.95, 1.0)
-DEFAULT_RHO_VALUES = tuple(np.round(np.arange(0.0, 4.001, 1.0), 2))
+# Dense search: 50 channel weights and all unique two-level, length-7
+# momentum profiles generated from the ranges below (63,250 sets total).
+DEFAULT_ALPHAS = tuple(np.round(np.arange(0.1, 5.001, 0.1), 2))
+DEFAULT_RHO_EARLY_VALUES = tuple(np.round(np.arange(0.0, 4.001, 0.25), 2))
+DEFAULT_RHO_LATE_VALUES = tuple(np.round(np.arange(0.0, 3.001, 0.25), 2))
+DEFAULT_RHO_SPLITS = (1, 2, 3, 4, 5, 6, 7)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
@@ -43,6 +43,16 @@ def comma_separated_floats(value):
     return values
 
 
+def comma_separated_ints(value):
+    try:
+        values = tuple(int(item.strip()) for item in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid integer list: {value!r}") from exc
+    if not values:
+        raise argparse.ArgumentTypeError("the list must not be empty")
+    return values
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
@@ -51,9 +61,9 @@ def parse_args():
         )
     )
     parser.add_argument("-c", "--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--snr", type=float, default=0.8)
-    parser.add_argument("--trials", type=int, default=2_000_000)
-    parser.add_argument("--max-errors", type=int, default=200)
+    parser.add_argument("--snr", type=float, default=-0.2)
+    parser.add_argument("--trials", type=int, default=10_000_000)
+    parser.add_argument("--max-errors", type=int, default=50)
     parser.add_argument("--workers", type=int)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -64,42 +74,32 @@ def parse_args():
         default=DEFAULT_ALPHAS,
     )
     parser.add_argument(
-        "--deltas",
+        "--rho",
         type=comma_separated_floats,
-        default=DEFAULT_DELTAS,
-        help="threshold offsets for V1/V2",
-    )
-    parser.add_argument(
-        "--thetas",
-        type=comma_separated_floats,
-        default=DEFAULT_THETAS,
-        help="fixed edge thresholds for V3 (used instead of --deltas)",
-    )
-    parser.add_argument(
-        "--probabilities",
-        type=comma_separated_floats,
-        default=DEFAULT_PROBABILITIES,
-    )
-    parser.add_argument(
-        "--momentum-length",
-        type=int,
-        default=0,
-        help="momentum length L; 0 disables momentum",
-    )
-    parser.add_argument(
-        "--rho-values",
-        type=comma_separated_floats,
-        default=DEFAULT_RHO_VALUES,
+        action="append",
+        dest="rho_profiles",
         help=(
-            "values for each rho(l); only profiles with "
-            "rho(1) >= ... >= rho(L) >= 0 are searched (Savin, eq. 5; "
-            "trailing zeros act as a shorter L)"
+            "momentum profile, for example --rho 0.5,0.5,0.5,0.5,0.5,0.25,0.25; "
+            "repeat the option to search several profiles"
         ),
     )
     parser.add_argument(
-        "--rho-unconstrained",
-        action="store_true",
-        help="search every rho profile from --rho-values, ignoring eq. 5",
+        "--rho-early-values",
+        type=comma_separated_floats,
+        default=DEFAULT_RHO_EARLY_VALUES,
+        help="values before the momentum-profile split",
+    )
+    parser.add_argument(
+        "--rho-late-values",
+        type=comma_separated_floats,
+        default=DEFAULT_RHO_LATE_VALUES,
+        help="values from the momentum-profile split onward",
+    )
+    parser.add_argument(
+        "--rho-splits",
+        type=comma_separated_ints,
+        default=DEFAULT_RHO_SPLITS,
+        help="counts of leading entries using the early rho value",
     )
     return parser.parse_args()
 
@@ -107,8 +107,6 @@ def parse_args():
 def validate_args(args):
     if not np.isfinite(args.snr):
         raise ValueError("--snr must be finite")
-    if args.seed < 0:
-        raise ValueError("--seed must be non-negative")
     if args.trials <= 0:
         raise ValueError("--trials must be positive")
     if args.max_errors <= 0:
@@ -119,63 +117,66 @@ def validate_args(args):
         raise ValueError("--max-configs must be positive")
     if any(not np.isfinite(value) or value <= 0 for value in args.alphas):
         raise ValueError("all alphas must be finite and positive")
-    if any(not np.isfinite(value) or value < 0 for value in args.deltas):
-        raise ValueError("all deltas must be finite and non-negative")
-    if any(not np.isfinite(value) for value in args.thetas):
-        raise ValueError("all thetas must be finite")
-    if any(not np.isfinite(value) or not 0 <= value <= 1
-           for value in args.probabilities):
-        raise ValueError("all probabilities must be finite and in [0, 1]")
-    if args.momentum_length < 0:
-        raise ValueError("--momentum-length must be non-negative")
-    if any(not np.isfinite(value) for value in args.rho_values):
-        raise ValueError("all rho values must be finite")
-    if args.momentum_length and not rho_profiles(args):
-        raise ValueError("--rho-values must contain a non-negative value")
+    if any(
+        not np.isfinite(value) or value < 0
+        for value in args.rho_early_values + args.rho_late_values
+    ):
+        raise ValueError("generated rho values must be finite and non-negative")
+    if any(split <= 0 for split in args.rho_splits):
+        raise ValueError("rho splits must be positive")
+    for profile in args.rho_profiles or ():
+        if not profile or any(not np.isfinite(value) for value in profile):
+            raise ValueError("rho profiles must be non-empty and finite")
 
 
 def load_base_experiment(config_path):
     config = load_json(str(config_path))
     experiment = config["experiment"]
-    if experiment["codec"].get("algorithm") not in (
-        "cpp edge-wise gradient descent bit-flipping",
-        "cpp edge-wise gradient descent bit-flipping v2",
-        V3_ALGORITHM,
+    if experiment["codec"].get("algorithm") != (
+        "cpp edge-wise gradient descent bit-flipping"
     ):
-        raise ValueError("the selected config must use a C++ E-GDBF decoder")
+        raise ValueError("the selected config must use the C++ E-GDBF decoder")
     return experiment, config.get("simulation", {})
 
 
-def rho_profiles(args):
-    """Return momentum profiles with rho(1) >= ... >= rho(L) >= 0."""
-    if args.momentum_length == 0:
-        return [()]
-    if args.rho_unconstrained:
-        values = sorted({float(value) for value in args.rho_values},
-                        reverse=True)
-        return list(itertools.product(values, repeat=args.momentum_length))
-    values = sorted({float(value) for value in args.rho_values if value >= 0},
-                    reverse=True)
-    return list(itertools.combinations_with_replacement(
-        values, args.momentum_length,
-    ))
+def generated_rho_profiles(args, momentum_length):
+    if args.rho_profiles:
+        return args.rho_profiles
+    if any(split > momentum_length for split in args.rho_splits):
+        raise ValueError("rho splits must not exceed the configured L")
+
+    profiles = []
+    seen = set()
+    for early, late, split in itertools.product(
+        args.rho_early_values,
+        args.rho_late_values,
+        args.rho_splits,
+    ):
+        profile = (
+            (float(early),) * split
+            + (float(late),) * (momentum_length - split)
+        )
+        if profile not in seen:
+            seen.add(profile)
+            profiles.append(profile)
+    return profiles
 
 
-def parameter_grid(args, algorithm):
-    # V3 has a fixed edge threshold theta instead of the offset delta.
-    threshold_name, thresholds = (
-        ("theta", args.thetas) if algorithm == V3_ALGORITHM
-        else ("delta", args.deltas)
-    )
-    candidates = []
-    for alpha, threshold, probability, rho in itertools.product(
-        args.alphas, thresholds, args.probabilities, rho_profiles(args),
+def parameter_grid(args, base_params):
+    rho_profiles = generated_rho_profiles(args, int(base_params["L"]))
+    baseline = {
+        "alpha": float(base_params["alpha"]),
+        "rho": [float(value) for value in base_params["rho"]],
+        "L": int(base_params["L"]),
+    }
+    candidates = [baseline]
+    for rho, alpha in itertools.product(
+        rho_profiles,
+        args.alphas,
     ):
         candidates.append({
             "alpha": float(alpha),
-            threshold_name: float(threshold),
-            "p": float(probability),
-            "rho": list(rho),
+            "rho": [float(value) for value in rho],
             "L": len(rho),
         })
 
@@ -274,14 +275,15 @@ def main():
     os.chdir(PROJECT_DIR)
     base_experiment, simulation_config = load_base_experiment(args.config)
     egdbf_compile()
-    candidates = parameter_grid(args, base_experiment["codec"]["algorithm"])
+    candidates = parameter_grid(
+        args,
+        base_experiment["codec"]["decoder_params"],
+    )
     if args.max_configs is not None:
         candidates = candidates[:args.max_configs]
 
     workers = min(args.workers or default_workers(simulation_config), len(candidates))
     output_path = args.output.resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.with_suffix(".jsonl").write_text("", encoding="utf-8")
     print(
         f"E-GDBF search: SNR={args.snr:g} dB, "
         f"max_trials={args.trials}, target_errors={args.max_errors}, "
@@ -289,6 +291,7 @@ def main():
         flush=True,
     )
 
+    output_path.with_suffix(".jsonl").write_text("", encoding="utf-8")
     best_result = None
     context = mp.get_context("spawn")
     with context.Pool(

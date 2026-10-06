@@ -85,40 +85,6 @@ The experiment JSON is a positional argument. To select another config or port:
 DASHBOARD_PORT=8890 ./run.sh experiments/experiment.json
 ```
 
-## E-GDBF V1 hyperparameter search
-
-For the C++ E-GDBF V1 decoder, submit the existing tuner runner on the server:
-
-```console
-sbatch tune_egdbf.sh
-```
-
-The tuner searches all 399 alpha–delta pairs at 0.8 dB. Every pair is
-evaluated until 200 frame errors or two million trials. Momentum is always
-disabled (`L=0, rho=[]`); the experiment JSON is not changed. Results go to
-`params_cpp_egdbf.jsonl`, and the current best to `params_cpp_egdbf.txt`.
-E-GDBF V1 also accepts a per-edge flip probability `p`: each eligible edge
-flips independently with probability `p`. Its default `p=1` reproduces the
-original deterministic decoder. Use `--probabilities` to search other values,
-along with `--snr`, `--alphas`, `--deltas`, `--max-errors`, and `--trials`.
-
-## PMGDBF hyperparameter search
-
-For the PMGDBF comparison at 0.8 dB, submit:
-
-```console
-sbatch tune_pmgdbf.sh
-```
-
-The tuner searches the same 19 alpha and 21 delta values as E-GDBF, with
-`p` in `0.8, 0.9, 1.0` (1,197 parameter sets). Every set uses `L=0, rho=[]`
-and runs until 50 frame errors or two million trials. Results are written to
-`params_pmgdbf_no_momentum.jsonl`; the current best is in
-`params_pmgdbf_no_momentum.txt`. Use `--max-errors 50` for the E-GDBF run
-to compare both searches with the same stopping target. Override the PMGDBF
-grid with `--alphas`, `--deltas`, and `--probabilities` if needed.
-For example, `sbatch tune_pmgdbf.sh --probabilities 1` evaluates only `p=1`.
-
 ## EPMGDBF hyperparameter search
 
 Search the scalar EPMGDBF parameters at SNR 0.5 dB:
