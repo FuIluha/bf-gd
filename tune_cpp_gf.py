@@ -1,34 +1,19 @@
-"""Search the C++ gradient flow (GF) parameters at one SNR point.
+"""Grid-search the C++ gradient flow (GF) parameters at one SNR point.
 
-The GF update is  x <- x - eta * (x - y + gamma * grad h_{alpha,beta}(x))  and grad h is
-linear in (alpha, beta), so only the products gamma*alpha and gamma*beta matter.
-The search therefore runs over three parameters (alpha, beta, eta) with gamma fixed to 1,
-all of them on a logarithmic scale.
-
-Search strategy
-  1. Latin-hypercube sample of the whole box (plus the paper defaults as a reference).
-  2. Successive halving: all candidates are decoded on the same noise realizations
-     (common random numbers), the worse part is dropped after each round and the
-     survivors get several times more frames.
-  3. Local refinement: shrinking boxes around the current best, evaluated on the
-     same frames as the incumbent.
-  4. Confirmation: the finalists are re-evaluated on fresh noise, so the reported
-     result is not inflated by selecting the luckiest candidate.
-Only the best parameters are printed and saved.
+The GF update is  x <- x - eta * (x - y + gamma * grad h_{alpha,beta}(x)).
+grad h is linear in (alpha, beta), so only the products gamma*alpha and gamma*beta
+matter: gamma is kept in the interface but its default grid is the single value 1.
 """
 
 import argparse
 import copy
+import itertools
 import json
-import math
 import multiprocessing as mp
 import os
-import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from scipy.stats import qmc
 
 from ldpc_experiment import LdpcExperimentInstance, LdpcExperimentSettings
 from ldpc_py.cpp_bin_ldpc_gf import lib_compile as gf_compile
@@ -41,122 +26,72 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gf.txt"
 
-# Reference point from the paper (Table 2 with gamma = 1).
-REFERENCE_PARAMS = (1.0, 2.0, 0.01)  # alpha, beta, eta
-
-SEARCH_STREAM = 0
-CONFIRM_STREAM = 1
-INSTANCE_CACHE_SIZE = 3
+# 14 * 14 * 1 * 16 = 3136 combinations, denser around the region found
+# useful in earlier searches (alpha ~ 0.1-0.5, beta ~ 1-3, eta ~ 0.007-0.014).
+DEFAULT_ALPHAS = (0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.7, 1.0, 1.5, 2.0, 3.0, 5.0, 8.0)
+DEFAULT_BETAS = (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 12.0)
+DEFAULT_GAMMAS = (1.0,)
+DEFAULT_ETAS = (
+    0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.010,
+    0.011, 0.012, 0.014, 0.016, 0.020, 0.025, 0.030, 0.040,
+)
 
 _BASE_EXPERIMENT = None
 _SNR_DB = None
+_MAX_TRIALS = None
+_MAX_ERRORS = None
 _SEED = None
-_INSTANCES = {}
 
 
-@dataclass
-class Candidate:
-    """Parameters (alpha, beta, eta) together with the statistics collected so far."""
-    params: tuple
-    frames: int = 0
-    frame_errors: int = 0
-    bit_errors: float = 0.0
-    invalid: bool = False
-
-    @property
-    def ber(self):
-        return self.bit_errors / self.frames if self.frames else math.inf
-
-    @property
-    def fer(self):
-        return self.frame_errors / self.frames if self.frames else math.inf
-
-    def score(self, metric):
-        if self.invalid or not self.frames:
-            return (math.inf, math.inf)
-        if metric == "fer":
-            return (self.fer, self.ber)
-        return (self.ber, self.fer)
-
-    def decoder_params(self):
-        alpha, beta, eta = self.params
-        return {"alpha": alpha, "beta": beta, "gamma": 1.0, "eta": eta}
-
-
-def float_pair(value):
+def comma_separated_floats(value):
     try:
-        low, high = (float(item) for item in value.split(","))
+        values = tuple(float(item.strip()) for item in value.split(","))
     except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"expected 'low,high', got {value!r}") from exc
-    if not 0 < low < high:
-        raise argparse.ArgumentTypeError("need 0 < low < high")
-    return low, high
+        raise argparse.ArgumentTypeError(f"invalid number list: {value!r}") from exc
+    if not values:
+        raise argparse.ArgumentTypeError("the list must not be empty")
+    return values
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Search C++ GF parameters (alpha, beta, eta; gamma is fixed to 1) at a "
-            "fixed SNR. Only the best result is printed and saved."
+            "Search C++ GF hyperparameters using FER at a fixed SNR. "
+            "Every new best result is saved immediately."
         )
     )
     parser.add_argument("-c", "--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--snr", type=float, default=-2.0,
-                        help="simulator SNR in dB (Es/N0)")
-    parser.add_argument("--metric", choices=("ber", "fer"), default="ber",
-                        help="quantity to minimize; the other one breaks ties")
+    parser.add_argument("--snr", type=float, default=-1.0)
+    parser.add_argument("--trials", type=int, default=100_000_000)
+    parser.add_argument("--max-errors", type=int, default=100)
     parser.add_argument("--iterations", type=int,
                         help="override n_iterations from the config")
-    parser.add_argument("--alpha-range", type=float_pair, default=(0.1, 10.0))
-    parser.add_argument("--beta-range", type=float_pair, default=(0.1, 20.0))
-    parser.add_argument("--eta-range", type=float_pair, default=(0.002, 0.05))
-    parser.add_argument("--candidates", type=int, default=512,
-                        help="size of the initial global sample")
-    parser.add_argument("--min-frames", type=int, default=300,
-                        help="frames per candidate in the first halving round")
-    parser.add_argument("--halving-factor", type=int, default=3,
-                        help="survivors are 1/factor, frames grow by factor")
-    parser.add_argument("--finalists", type=int, default=5)
-    parser.add_argument("--refine-rounds", type=int, default=4)
-    parser.add_argument("--refine-samples", type=int, default=64)
-    parser.add_argument("--refine-shrink", type=float, default=0.6,
-                        help="box half-width (in log units) is multiplied by this per round")
-    parser.add_argument("--confirm-frames", type=int, default=5000,
-                        help="initial frames per finalist on fresh noise")
-    parser.add_argument("--confirm-errors", "--max-errors", dest="confirm_errors",
-                        type=int, default=200,
-                        help="stop doubling when the best finalist has this many frame errors")
-    parser.add_argument("--max-confirm-frames", "--trials", dest="max_confirm_frames",
-                        type=int, default=400_000,
-                        help="upper limit of frames per finalist in the confirmation stage")
-    parser.add_argument("--chunk", type=int, default=25,
-                        help="frames per parallel task")
     parser.add_argument("--workers", type=int)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--verbose", action="store_true",
-                        help="print progress to stderr")
+    parser.add_argument("--max-configs", type=int)
+    parser.add_argument("--alphas", type=comma_separated_floats, default=DEFAULT_ALPHAS)
+    parser.add_argument("--betas", type=comma_separated_floats, default=DEFAULT_BETAS)
+    parser.add_argument("--gammas", type=comma_separated_floats, default=DEFAULT_GAMMAS)
+    parser.add_argument("--etas", type=comma_separated_floats, default=DEFAULT_ETAS)
     return parser.parse_args()
 
 
 def validate_args(args):
-    positive = (
-        "candidates", "min_frames", "halving_factor", "finalists", "refine_samples",
-        "confirm_frames", "confirm_errors", "max_confirm_frames", "chunk",
-    )
-    for name in positive:
-        if getattr(args, name) <= 0:
-            raise ValueError(f"--{name.replace('_', '-')} must be positive")
-    if args.halving_factor < 2:
-        raise ValueError("--halving-factor must be at least 2")
-    if args.refine_rounds < 0:
-        raise ValueError("--refine-rounds must be non-negative")
-    if not 0 < args.refine_shrink <= 1:
-        raise ValueError("--refine-shrink must be in (0, 1]")
+    if args.trials <= 0:
+        raise ValueError("--trials must be positive")
+    if args.max_errors <= 0:
+        raise ValueError("--max-errors must be positive")
     if args.iterations is not None and args.iterations <= 0:
         raise ValueError("--iterations must be positive")
     if args.workers is not None and args.workers <= 0:
         raise ValueError("--workers must be positive")
+    if args.max_configs is not None and args.max_configs <= 0:
+        raise ValueError("--max-configs must be positive")
+    if any(not np.isfinite(v) or v < 0 for v in args.alphas + args.betas + args.gammas):
+        raise ValueError("alpha, beta and gamma values must be finite and non-negative")
+    if any(not np.isfinite(v) or v <= 0 for v in args.etas):
+        raise ValueError("all eta values must be positive")
 
 
 def load_base_experiment(config_path, iterations):
@@ -169,173 +104,118 @@ def load_base_experiment(config_path, iterations):
     return experiment, config.get("simulation", {})
 
 
+def parameter_grid(args, base_params):
+    baseline = {
+        "alpha": float(base_params["alpha"]),
+        "beta": float(base_params["beta"]),
+        "gamma": float(base_params["gamma"]),
+        "eta": float(base_params["eta"]),
+    }
+    candidates = [baseline]
+    for alpha, beta, gamma, eta in itertools.product(
+        args.alphas, args.betas, args.gammas, args.etas,
+    ):
+        candidates.append({"alpha": alpha, "beta": beta, "gamma": gamma, "eta": eta})
+
+    unique_candidates = []
+    seen = set()
+    for candidate in candidates:
+        key = tuple(candidate.items())
+        if key not in seen:
+            seen.add(key)
+            unique_candidates.append(candidate)
+    return unique_candidates
+
+
+def init_worker(base_experiment, snr_db, max_trials, max_errors, seed):
+    global _BASE_EXPERIMENT, _SNR_DB, _MAX_TRIALS, _MAX_ERRORS, _SEED
+    _BASE_EXPERIMENT = base_experiment
+    _SNR_DB = snr_db
+    _MAX_TRIALS = max_trials
+    _MAX_ERRORS = max_errors
+    _SEED = seed
+
+
+def evaluate_candidate(index_and_params):
+    index, decoder_params = index_and_params
+    experiment_config = copy.deepcopy(_BASE_EXPERIMENT)
+    experiment_config["codec"]["decoder_params"] = decoder_params
+    experiment = LdpcExperimentInstance(
+        LdpcExperimentSettings(**experiment_config)
+    )
+
+    frame_errors = 0
+    bit_errors = 0.0
+    iterations = 0
+    trials_completed = 0
+    for trial_index in range(_MAX_TRIALS):
+        rng = np.random.default_rng([_SEED, trial_index])
+        try:
+            result = experiment.run(_SNR_DB, rng)
+        except FloatingPointError:
+            return {
+                "index": index,
+                "decoder_params": decoder_params,
+                "invalid": True,
+            }
+        trials_completed += 1
+        frame_errors += int(result.fe_cum)
+        bit_errors += float(result.be_cum)
+        iterations += int(result.n_iter)
+        if frame_errors >= _MAX_ERRORS:
+            break
+
+    return {
+        "index": index,
+        "decoder_params": decoder_params,
+        "invalid": False,
+        "trials": trials_completed,
+        "frame_errors": frame_errors,
+        "fer": frame_errors / trials_completed,
+        "ber": bit_errors / trials_completed,
+        "average_iterations": iterations / trials_completed,
+    }
+
+
+def result_score(result):
+    return result["fer"], result["ber"], result["average_iterations"]
+
+
+def format_params(decoder_params):
+    return "  ".join(f"{name}={value:g}" for name, value in decoder_params.items())
+
+
+def save_best(path, result, args, iterations, completed, total):
+    payload = {
+        "snr_db": args.snr,
+        "n_iterations": iterations,
+        "max_trials": args.trials,
+        "target_frame_errors": args.max_errors,
+        "trials": result["trials"],
+        "seed": args.seed,
+        "completed_parameter_sets": completed,
+        "total_parameter_sets": total,
+        "frame_errors": result["frame_errors"],
+        "fer": result["fer"],
+        "ber": result["ber"],
+        "average_iterations": result["average_iterations"],
+        "decoder_params": result["decoder_params"],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_name(f".{path.name}.tmp")
+    temporary_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    temporary_path.replace(path)
+
+
 def default_workers(simulation_config):
     allocated_cpus = os.environ.get("SLURM_CPUS_PER_TASK")
     if allocated_cpus:
         return int(allocated_cpus)
     local_cpus = os.cpu_count() or 1
     return min(int(simulation_config.get("n_workers", local_cpus)), local_cpus)
-
-
-def log(args, message):
-    if args.verbose:
-        print(message, file=sys.stderr, flush=True)
-
-
-# ---------------------------------------------------------------- workers
-
-def init_worker(base_experiment, snr_db, seed):
-    global _BASE_EXPERIMENT, _SNR_DB, _SEED
-    _BASE_EXPERIMENT = base_experiment
-    _SNR_DB = snr_db
-    _SEED = seed
-
-
-def get_instance(params):
-    instance = _INSTANCES.get(params)
-    if instance is None:
-        if len(_INSTANCES) >= INSTANCE_CACHE_SIZE:
-            _INSTANCES.clear()
-        experiment_config = copy.deepcopy(_BASE_EXPERIMENT)
-        alpha, beta, eta = params
-        experiment_config["codec"]["decoder_params"] = {
-            "alpha": alpha, "beta": beta, "gamma": 1.0, "eta": eta,
-        }
-        instance = LdpcExperimentInstance(LdpcExperimentSettings(**experiment_config))
-        _INSTANCES[params] = instance
-    return instance
-
-
-def run_chunk(task):
-    """Decode frames [start, end) of one noise stream with one parameter set."""
-    key, params, stream, start, end = task
-    instance = get_instance(params)
-    frame_errors = 0
-    bit_errors = 0.0
-    for frame in range(start, end):
-        rng = np.random.default_rng([_SEED, stream, frame])
-        try:
-            result = instance.run(_SNR_DB, rng)
-        except FloatingPointError:
-            return key, True, 0, 0.0, 0
-        frame_errors += int(result.fe_cum)
-        bit_errors += float(result.be_cum)
-    return key, False, frame_errors, bit_errors, end - start
-
-
-# ------------------------------------------------------------ search logic
-
-def evaluate(pool, candidates, target_frames, stream, chunk):
-    """Bring every candidate to exactly target_frames frames of the given noise stream."""
-    tasks = []
-    for key, candidate in enumerate(candidates):
-        if candidate.invalid:
-            continue
-        for start in range(candidate.frames, target_frames, chunk):
-            tasks.append((
-                key, candidate.params, stream, start, min(start + chunk, target_frames),
-            ))
-    for key, invalid, frame_errors, bit_errors, frames in pool.imap_unordered(
-        run_chunk, tasks, chunksize=1,
-    ):
-        candidate = candidates[key]
-        if invalid:
-            candidate.invalid = True
-            continue
-        candidate.frame_errors += frame_errors
-        candidate.bit_errors += bit_errors
-        candidate.frames += frames
-
-
-def sample_log_box(count, low, high, seed):
-    """Latin-hypercube sample of a box, uniform in the logarithm of each coordinate."""
-    low = np.log(np.asarray(low, dtype=np.float64))
-    high = np.log(np.asarray(high, dtype=np.float64))
-    unit = qmc.LatinHypercube(d=len(low), seed=seed).random(count)
-    return [tuple(float(v) for v in np.exp(low + point * (high - low))) for point in unit]
-
-
-def successive_halving(pool, args, candidates):
-    frames = args.min_frames
-    while True:
-        evaluate(pool, candidates, frames, SEARCH_STREAM, args.chunk)
-        candidates = [c for c in candidates if not c.invalid]
-        if not candidates:
-            raise RuntimeError("all candidates diverged; narrow the parameter ranges")
-        candidates.sort(key=lambda c: c.score(args.metric))
-        log(args, f"halving: {len(candidates)} candidates x {frames} frames, "
-                  f"best {args.metric}={candidates[0].score(args.metric)[0]:.4g} "
-                  f"params={candidates[0].params}")
-        if len(candidates) <= args.finalists:
-            return candidates, frames
-        keep = max(args.finalists, math.ceil(len(candidates) / args.halving_factor))
-        candidates = candidates[:keep]
-        frames *= args.halving_factor
-
-
-def refine(pool, args, survivors, frames, global_low, global_high):
-    """Shrinking log-boxes around the incumbent, all compared on the same frames."""
-    evaluated = list(survivors)
-    incumbent = evaluated[0]
-    half_width = np.log(4.0)  # first box: a factor of 4 in each direction
-    for round_index in range(args.refine_rounds):
-        center = np.log(np.asarray(incumbent.params))
-        low = np.maximum(center - half_width, np.log(global_low))
-        high = np.minimum(center + half_width, np.log(global_high))
-        points = sample_log_box(
-            args.refine_samples, np.exp(low), np.exp(high), args.seed + 1 + round_index,
-        )
-        fresh = [Candidate(point) for point in points]
-        evaluate(pool, fresh, frames, SEARCH_STREAM, args.chunk)
-        evaluated.extend(fresh)
-        evaluated.sort(key=lambda c: c.score(args.metric))
-        incumbent = evaluated[0]
-        half_width *= args.refine_shrink
-        log(args, f"refine {round_index + 1}/{args.refine_rounds}: "
-                  f"best {args.metric}={incumbent.score(args.metric)[0]:.4g} "
-                  f"params={incumbent.params}")
-    return [c for c in evaluated if not c.invalid][:args.finalists]
-
-
-def confirm(pool, args, finalists):
-    """Re-evaluate the finalists and the reference on fresh noise until the best is reliable."""
-    entries = [Candidate(c.params) for c in finalists]
-    reference = next((c for c in entries if c.params == REFERENCE_PARAMS), None)
-    if reference is None:
-        reference = Candidate(REFERENCE_PARAMS)
-        entries.append(reference)
-
-    frames = args.confirm_frames
-    while True:
-        evaluate(pool, entries, frames, CONFIRM_STREAM, args.chunk)
-        best = min(entries, key=lambda c: c.score(args.metric))
-        log(args, f"confirm: {frames} frames, best {args.metric}="
-                  f"{best.score(args.metric)[0]:.4g} ({best.frame_errors} frame errors)")
-        if best.frame_errors >= args.confirm_errors or frames >= args.max_confirm_frames:
-            return best, reference, frames
-        frames = min(frames * 2, args.max_confirm_frames)
-
-
-def result_payload(candidate, args, frames, iterations):
-    return {
-        "snr_db": args.snr,
-        "metric": args.metric,
-        "n_iterations": iterations,
-        "confirmation_frames": frames,
-        "frame_errors": candidate.frame_errors,
-        "fer": candidate.fer,
-        "ber": candidate.ber,
-        "decoder_params": candidate.decoder_params(),
-    }
-
-
-def save_result(path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = path.with_name(f".{path.name}.tmp")
-    temporary_path.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
-    )
-    temporary_path.replace(path)
 
 
 def main():
@@ -348,47 +228,64 @@ def main():
     chan_compile()
     lbc_compile()
     gf_compile()
+    candidates = parameter_grid(args, base_experiment["codec"]["decoder_params"])
+    if args.max_configs is not None:
+        candidates = candidates[:args.max_configs]
 
-    low = (args.alpha_range[0], args.beta_range[0], args.eta_range[0])
-    high = (args.alpha_range[1], args.beta_range[1], args.eta_range[1])
-    candidates = [Candidate(point) for point in
-                  sample_log_box(args.candidates, low, high, args.seed)]
-    if REFERENCE_PARAMS not in {c.params for c in candidates}:
-        candidates.append(Candidate(REFERENCE_PARAMS))
+    workers = min(args.workers or default_workers(simulation_config), len(candidates))
+    output_path = args.output.resolve()
+    print(
+        f"GF search: SNR={args.snr:g} dB, iterations={iterations}, "
+        f"max_trials={args.trials}, target_errors={args.max_errors}, "
+        f"parameter_sets={len(candidates)}, workers={workers}",
+        flush=True,
+    )
 
-    workers = args.workers or default_workers(simulation_config)
-    log(args, f"GF search: SNR={args.snr:g} dB, metric={args.metric}, "
-              f"iterations={iterations}, candidates={len(candidates)}, workers={workers}")
-
+    output_path.with_suffix(".jsonl").write_text("", encoding="utf-8")
+    best_result = None
     context = mp.get_context("spawn")
     with context.Pool(
         processes=workers,
         initializer=init_worker,
-        initargs=(base_experiment, args.snr, args.seed),
+        initargs=(
+            base_experiment,
+            args.snr,
+            args.trials,
+            args.max_errors,
+            args.seed,
+        ),
     ) as pool:
-        survivors, frames = successive_halving(pool, args, candidates)
-        finalists = refine(pool, args, survivors, frames, low, high)
-        best, reference, confirm_frames = confirm(pool, args, finalists)
+        results = pool.imap_unordered(
+            evaluate_candidate,
+            enumerate(candidates),
+            chunksize=1,
+        )
+        for completed, result in enumerate(results, start=1):
+            with output_path.with_suffix(".jsonl").open("a", encoding="utf-8") as log:
+                log.write(json.dumps(result) + "\n")
+            if result["invalid"]:
+                print(
+                    f"INVALID [{completed}/{len(candidates)}] "
+                    f"{format_params(result['decoder_params'])}",
+                    flush=True,
+                )
+                continue
+            if best_result is None or result_score(result) < result_score(best_result):
+                best_result = result
+                save_best(output_path, result, args, iterations, completed, len(candidates))
+                print(
+                    f"NEW BEST [{completed}/{len(candidates)}] "
+                    f"FER={result['fer']:.6g} "
+                    f"({result['frame_errors']} errors / "
+                    f"{result['trials']} trials), "
+                    f"BER={result['ber']:.6g}, "
+                    f"avg_iter={result['average_iterations']:.3f}\n"
+                    f"params: {format_params(result['decoder_params'])}\n"
+                    f"saved to {output_path}",
+                    flush=True,
+                )
 
-    payload = result_payload(best, args, confirm_frames, iterations)
-    payload["reference"] = {
-        "description": "paper defaults (alpha=1, beta=2, gamma=1, eta=0.01)",
-        "fer": reference.fer,
-        "ber": reference.ber,
-        "frame_errors": reference.frame_errors,
-    }
-    save_result(args.output.resolve(), payload)
-
-    params = best.decoder_params()
-    print(
-        f"Best GF parameters at SNR={args.snr:g} dB ({iterations} iterations):\n"
-        f"  alpha={params['alpha']:.6g}  beta={params['beta']:.6g}  "
-        f"gamma={params['gamma']:g}  eta={params['eta']:.6g}\n"
-        f"  BER={best.ber:.4g}  FER={best.fer:.4g}  "
-        f"({best.frame_errors} frame errors / {best.frames} frames)\n"
-        f"  saved to {args.output.resolve()}",
-        flush=True,
-    )
+    print(f"Search completed. Best parameters: {output_path}", flush=True)
 
 
 if __name__ == "__main__":
