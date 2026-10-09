@@ -14,6 +14,7 @@ from .cpp_bin_ldpc_gdms import CppBinLdpcGdmsDecoder
 from .bin_ldpc_tgdbf import BinLdpcTgdbfDecoder
 from .cpp_bin_ldpc_mgdms import CppBinLdpcMgdmsDecoder
 from .bin_ldpc_gf import BinLdpcGfDecoder
+from .cpp_bin_ldpc_gf import CppBinLdpcGfDecoder
 
 _DECODER_TYPES = {
     "bit-flipping": BinLdpcBfDecoder,
@@ -34,6 +35,7 @@ _DECODER_TYPES = {
     "cpp soft gradient descent bit-flipping": CppBinLdpcGdmsDecoder,
     "test gradient descent bit-flipping": BinLdpcTgdbfDecoder,
     "gf": BinLdpcGfDecoder,
+    "cpp gf": CppBinLdpcGfDecoder,
 }
 
 def create_decoder(algorithm, alist_filename, **kwargs):

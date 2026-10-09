@@ -4,9 +4,9 @@
     "channel_output": "received",
     "codec": {
       "type": "BinaryLdpcCodec",
-      "algorithm": "gf",
+      "algorithm": "cpp gf",
       "src_dir": "codes",
-      "code": "mackay_PEGReg252x504.json",
+      "code": "ldpc_5g_k120_n600.json",
       "n_iterations": 1000,
       "llr_type": "float32",
       "decoder_params": {
@@ -19,7 +19,7 @@
   },
   "simulation": {
     "n_workers": 128,
-    "snr_range": "-3:0.5:3",
+    "snr_range": "-10:0.05:2",
     "max_errors": 200,
     "min_error_prob": 1e-7,
     "chunk_size": 10,
