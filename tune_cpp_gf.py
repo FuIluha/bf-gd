@@ -52,34 +52,34 @@ DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gf.txt"
 
 DEFAULT_ITERATIONS = 300
 
-# 17 * 15 * 1 * 18 * 10 * 3 = 137700 combinations.
-# Wide ranges, denser around the optimum of the 0 dB search (alpha 0.5-1.2,
-# beta 3-3.5, eta 0.09-0.1, theta 1, init zero; FER 5e-5).
+# 17 * 17 * 1 * 22 * 11 * 3 = 209814 combinations.
+# Denser where the 0 dB searches found their optima, wide enough to see the edges:
+#   zero: alpha 0.4, beta 2.5, eta 0.13, theta 1      (FER 5.2e-5)
+#   y:    alpha 0-0.1, beta 2.5-3, eta 0.08-0.1, theta 1.02 (FER 5.7e-5, lower BER)
+#   hard: much worse (4.6e-4), best with small eta, alpha 0 and beta < 1.
 # alpha and beta set the strength of the code terms relative to the channel term
-# x - y (coefficient 1). Large alpha freezes the signs early and large beta lets
-# the check term (variable degree up to 18) swamp the channel; the edges are
-# kept to confirm that.
-# The etas were tuned for 100 iterations (integration time T = 100 * eta); with early
-# stop 300 is only the upper limit, the average is ~10. Below
-# eta = 0.01 (T < 1) the state hardly leaves x(0), but init hard seems to need
-# small steps; unclipped Euler is stable only for eta < ~2 / (1 + 8 alpha + 2 beta
-# d_v), clipping to theta ~ 1 keeps eta ~ 0.1-0.15 useful, and at 0.2 and above
-# most frames fail. With another --iterations scale --etas inversely.
-# theta is dense near 1, where clipping changes the dynamics: for init zero and
-# hard the state stays below ~1.3-1.9 anyway, so theta = 2 is "no clipping";
-# for init y a large theta lets the state oscillate between -theta and theta.
+# x - y (coefficient 1): init y wants almost no alpha, zero a little. alpha 4 and
+# beta 9 are edge checks; larger values never won.
+# With early stop the iterations only need to be enough for the state to settle
+# (the average is ~10, the limit is 300), so small etas down to 0.003 are
+# reachable and init hard seems to need them. Unclipped Euler is stable only for
+# eta < ~2 / (1 + 8 alpha + 2 beta d_v) with d_v up to 18, but clipping to
+# theta ~ 1 keeps eta ~ 0.1-0.15 useful; 0.2-0.27 are edge checks.
+# theta can only be >= 1 and is dense just above 1, where clipping changes the
+# dynamics most (init y chose 1.02); for init zero and hard the state stays
+# below ~1.3-1.9 anyway, and a large theta lets init y oscillate.
 DEFAULT_ALPHAS = (
-    0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.85, 1.0, 1.2, 1.5, 2.0, 3.0, 5.0,
+    0.0, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.65, 0.8, 1.0, 1.5, 2.5, 4.0,
 )
 DEFAULT_BETAS = (
-    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0, 12.0,
+    0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 4.0, 4.5, 5.0, 6.5, 9.0,
 )
 DEFAULT_GAMMAS = (1.0,)
 DEFAULT_ETAS = (
-    0.005, 0.0075, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05,
-    0.065, 0.08, 0.09, 0.1, 0.11, 0.13, 0.16, 0.2, 0.25,
+    0.003, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.04, 0.055, 0.07, 0.08,
+    0.09, 0.1, 0.11, 0.12, 0.13, 0.145, 0.16, 0.18, 0.2, 0.23, 0.27,
 )
-DEFAULT_THETAS = (1.0, 1.02, 1.05, 1.1, 1.15, 1.2, 1.3, 1.45, 1.6, 2.0)
+DEFAULT_THETAS = (1.0, 1.005, 1.01, 1.02, 1.03, 1.05, 1.08, 1.12, 1.2, 1.35, 1.6)
 DEFAULT_INITS = INIT_MODES
 
 SEARCH_STREAM = 0
