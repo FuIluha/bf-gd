@@ -17,9 +17,10 @@ Search strategy
      are cheap.
   3. Zoom: a finer grid (midpoints to the neighbouring grid values) around the
      best survivors, raced on the same frames and merged with the survivors.
-  4. Confirmation: the finalists and the reference are re-evaluated on fresh
-     noise (again up to --max-errors errors or --trials frames each), so the
-     reported FER is not inflated by picking the luckiest one.
+  4. Confirmation: the finalists, the best candidate of every init (zero, y,
+     hard) and the reference are re-evaluated on fresh noise (again up to
+     --max-errors errors or --trials frames each), so the reported FER is not
+     inflated by picking the luckiest one and the inits are compared fairly.
 Every evaluated candidate is logged to the .jsonl file next to --output, and
 the current best is saved to --output after every stage.
 """
@@ -51,26 +52,33 @@ DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gf.txt"
 
 DEFAULT_ITERATIONS = 100
 
-# 11 * 10 * 1 * 10 * 5 * 3 = 16500 combinations.
-# alpha, beta and eta are roughly log-spaced; alpha and beta set the strength of
-# the code terms relative to the channel term x - y (coefficient 1). alpha = 0 is
-# kept because theta = 1 already pulls the state to the box; alpha = 5 freezes the
-# signs almost at once and beta = 12 lets the check term (variable degree up to
-# 18) swamp the channel, so both are left out.
+# 17 * 15 * 1 * 18 * 10 * 3 = 137700 combinations.
+# Wide ranges, denser around the optimum of the 0 dB search (alpha 0.5-1.2,
+# beta 3-3.5, eta 0.09-0.1, theta 1, init zero; FER 5e-5).
+# alpha and beta set the strength of the code terms relative to the channel term
+# x - y (coefficient 1). Large alpha freezes the signs early and large beta lets
+# the check term (variable degree up to 18) swamp the channel; the edges are
+# kept to confirm that.
 # The etas are for 100 iterations (integration time T = 100 * eta): below
-# eta = 0.01 (T < 1) the state hardly leaves x(0); unclipped Euler is stable only
-# for eta < ~2 / (1 + 8 alpha + 2 beta d_v), but clipping to theta ~ 1 keeps
-# eta ~ 0.1-0.15 useful, and at 0.2 and above almost every frame fails. With
-# another --iterations scale --etas inversely.
+# eta = 0.01 (T < 1) the state hardly leaves x(0), but init hard seems to need
+# small steps; unclipped Euler is stable only for eta < ~2 / (1 + 8 alpha + 2 beta
+# d_v), clipping to theta ~ 1 keeps eta ~ 0.1-0.15 useful, and at 0.2 and above
+# most frames fail. With another --iterations scale --etas inversely.
 # theta is dense near 1, where clipping changes the dynamics: for init zero and
-# hard the state stays below ~1.3-1.9 anyway, so theta = 1.6 is close to "no
-# clipping" and larger values would only repeat it; for init y a large theta
-# lets the state oscillate between -theta and theta.
-DEFAULT_ALPHAS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0, 3.0)
-DEFAULT_BETAS = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0)
+# hard the state stays below ~1.3-1.9 anyway, so theta = 2 is "no clipping";
+# for init y a large theta lets the state oscillate between -theta and theta.
+DEFAULT_ALPHAS = (
+    0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.85, 1.0, 1.2, 1.5, 2.0, 3.0, 5.0,
+)
+DEFAULT_BETAS = (
+    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0, 12.0,
+)
 DEFAULT_GAMMAS = (1.0,)
-DEFAULT_ETAS = (0.01, 0.015, 0.02, 0.03, 0.045, 0.065, 0.08, 0.1, 0.13, 0.16)
-DEFAULT_THETAS = (1.0, 1.1, 1.2, 1.35, 1.6)
+DEFAULT_ETAS = (
+    0.005, 0.0075, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05,
+    0.065, 0.08, 0.09, 0.1, 0.11, 0.13, 0.16, 0.2, 0.25,
+)
+DEFAULT_THETAS = (1.0, 1.02, 1.05, 1.1, 1.15, 1.2, 1.3, 1.45, 1.6, 2.0)
 DEFAULT_INITS = INIT_MODES
 
 SEARCH_STREAM = 0
@@ -94,6 +102,7 @@ class Candidate:
     bit_errors: float = 0.0
     invalid: bool = False
     rung: int = 0
+    rung_frames: int = 0
 
     @property
     def key(self):
@@ -382,6 +391,9 @@ class Search:
         self.log_path = log_path
         self.started = time.perf_counter()
         self.invalid_count = 0
+        # init -> the candidate with this init that got furthest in the halving
+        # (most frames, then the best score); it is always confirmed.
+        self.best_by_init = {}
 
     def say(self, message):
         elapsed = time.perf_counter() - self.started
@@ -400,6 +412,39 @@ class Search:
             for candidate in invalid:
                 self.say(f"INVALID {format_params(candidate.params)}")
         return [c for c in candidates if not c.invalid]
+
+    def update_best_by_init(self, candidates):
+        for candidate in candidates:
+            init = candidate.params["init"]
+            current = self.best_by_init.get(init)
+            if current is None or (
+                (-candidate.rung_frames, candidate.score())
+                < (-current.rung_frames, current.score())
+            ):
+                self.best_by_init[init] = candidate
+
+    def report_inits(self, candidates):
+        """One line per init: how many candidates are left and the best of them."""
+        for init in self.args.inits:
+            group = [c for c in candidates if c.params["init"] == init]
+            if group:
+                best = group[0]
+                print(
+                    f"           init={init:<4s}: {len(group):5d} left, best FER={best.fer:.4g} "
+                    f"({best.frame_errors} errors)  {format_params(best.params)}",
+                    flush=True,
+                )
+                continue
+            best = self.best_by_init.get(init)
+            if best is None:
+                print(f"           init={init:<4s}: none", flush=True)
+            else:
+                print(
+                    f"           init={init:<4s}:     0 left, last one out after "
+                    f"{best.rung_frames} frames with FER={best.fer:.4g}  "
+                    f"{format_params(best.params)}",
+                    flush=True,
+                )
 
     def halving(self, candidates, stage, final_frames=None):
         """Successive halving on the search stream.
@@ -422,12 +467,15 @@ class Search:
             candidates.sort(key=Candidate.score)
             for candidate in candidates:
                 candidate.rung = rung
+                candidate.rung_frames = frames
+            self.update_best_by_init(candidates)
             best = candidates[0]
             self.say(
                 f"{stage} rung {rung}: {len(candidates)} candidates x {frames} frames, "
                 f"best FER={best.fer:.4g} ({best.frame_errors} errors)  "
                 f"{format_params(best.params)}"
             )
+            self.report_inits(candidates)
             if final_frames is None:
                 done = len(candidates) <= args.finalists
             else:
@@ -435,17 +483,26 @@ class Search:
             if done:
                 return candidates, frames
             keep = max(args.finalists, math.ceil(len(candidates) / args.factor))
+            if frames < args.trials:
+                # Equal scores (typically zero errors at a high SNR) cannot be
+                # ranked yet: keep all of them, more frames will separate them.
+                cutoff = candidates[keep - 1].score()
+                while keep < len(candidates) and candidates[keep].score() == cutoff:
+                    keep += 1
             self.log(candidates[keep:], stage)
             candidates = candidates[:keep]
             frames = min(frames * args.factor, args.trials)
             rung += 1
 
     def confirm(self, finalists, reference):
-        """Re-evaluate the finalists and the reference on fresh noise."""
+        """Re-evaluate the finalists, the best of every init and the reference on fresh noise."""
         args = self.args
-        entries = [Candidate(c.params, source=c.source) for c in finalists]
-        if reference.key not in {c.key for c in entries}:
-            entries.append(Candidate(reference.params, source="reference"))
+        entries = unique(
+            [Candidate(c.params, source=c.source) for c in finalists]
+            + [Candidate(c.params, source=c.source) for c in self.best_by_init.values()]
+            + [Candidate(reference.params, source="reference")]
+        )
+        self.say(f"confirm: {len(entries)} candidates (finalists, best of every init, reference)")
         frames = min(args.confirm_frames, args.trials)
         while True:
             evaluate(self.pool, entries, frames, CONFIRM_STREAM, args.chunk, None,
@@ -545,6 +602,9 @@ def main():
         f"parameter_sets={len(candidates)}, workers={workers}",
         flush=True,
     )
+    per_init = {init: sum(c.params["init"] == init for c in candidates) for init in args.inits}
+    print("Grid per init: " + ", ".join(f"{init}={n}" for init, n in per_init.items()),
+          flush=True)
 
     context = mp.get_context("spawn")
     with context.Pool(
@@ -581,12 +641,17 @@ def main():
 
     best = confirmed[0]
     reference_entry = next(c for c in confirmed if c.key == reference.key)
+    best_by_init = {}
+    for candidate in confirmed:
+        if not candidate.invalid:
+            best_by_init.setdefault(candidate.params["init"], candidate)
     save_result(output_path, {
         **common,
         "stage": "confirmed on fresh noise",
         "diverged_parameter_sets": search.invalid_count,
         "best": stats(best),
         "reference": stats(reference_entry),
+        "best_by_init": {init: stats(c) for init, c in best_by_init.items()},
         "finalists": [stats(c) for c in confirmed],
         "decoder_params": best.params,
     })
@@ -596,10 +661,21 @@ def main():
         f"Best (fresh noise): FER={best.fer:.4g} "
         f"({best.frame_errors} errors / {best.frames} frames), BER={best.ber:.4g}\n"
         f"  {format_params(best.params)}\n"
-        f"Reference: FER={reference_entry.fer:.4g}  {format_params(reference_entry.params)}\n"
-        f"Saved to {output_path}, all candidates in {log_path}",
+        f"Reference: FER={reference_entry.fer:.4g}  {format_params(reference_entry.params)}",
         flush=True,
     )
+    print("Best of every init (fresh noise):", flush=True)
+    for init in args.inits:
+        candidate = best_by_init.get(init)
+        if candidate is None:
+            print(f"  init={init:<4s}: diverged", flush=True)
+            continue
+        print(
+            f"  init={init:<4s}: FER={candidate.fer:.4g} ({candidate.frame_errors} errors / "
+            f"{candidate.frames} frames)  {format_params(candidate.params)}",
+            flush=True,
+        )
+    print(f"Saved to {output_path}, all candidates in {log_path}", flush=True)
 
 
 if __name__ == "__main__":
