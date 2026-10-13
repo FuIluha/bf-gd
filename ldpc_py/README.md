@@ -8,6 +8,7 @@ Decoder of LDPC codes. Supports the following decoders:
 * FTGDBF (fixed-threshold gradient descent bit-flipping)
 * E-GDBF V1 and V2 (edge-wise gradient descent bit-flipping), Python and C++
 * GDMS (gradient-descent min-sum) with Python and C++ implementations
+* MPGD (alternating CN/VN gradient steps), Python and C++
 
 ## Implementation notes
 This repository has 
@@ -53,3 +54,51 @@ different proven scalar objective.
 
 Set `L` to `0` and `rho` to `[]` to disable momentum in both the Python and
 C++ implementations. With `L > 0`, `rho` must contain exactly `L` values.
+
+### MPGD
+
+Algorithm names: `mpgd` (Python, also registered in the visualizer) and
+`cpp mpgd` (native loop for simulations and tuning). Both implement the same
+deterministic algorithm. One iteration is a complete CN phase followed by a
+VN phase. The decoder parameters are `alpha`, `eta_r`, `eta_v`, `tau_r`, and
+`tau_v`; defaults are `1.0, 0.1, 0.1, 0.1, 0.1` respectively.
+
+States `s[i->a]` and `u[a->i]` are soft signs, not LLRs. Define binary entropy
+`h(z) = -(1+z)/2*log((1+z)/2) - (1-z)/2*log((1-z)/2)`. The local objectives are
+
+```
+R(s) = sum_a product(s[i->a] for i in N(a)) + tau_r*sum_edges h(s)
+V(u) = alpha*sum_i y[i]*sum(u[a->i] for a in N(i))
+       + sum_i sum(u[a->i]*u[b->i] for unordered pairs a,b in N(i))
+       + tau_v*sum_edges h(u)
+```
+
+Initialization and synchronous updates:
+
+```
+s[i->a] = clip(tanh(alpha*y[i]/2))
+u[a->i] = clip(s[i->a] + eta_r*(product(s[j->a] for j in N(a) excluding i)
+                               - tau_r*atanh(s[i->a])))
+s_new[i->a] = clip(u[a->i] + eta_v*(alpha*y[i]
+                    + sum(u[b->i] for b in N(i) excluding a)
+                    - tau_v*atanh(u[a->i])))
+x[i] = sign(sum(s_new[i->a] for a in N(i)))
+```
+
+Each phase reads a fixed snapshot of its inputs. Sending the updated state
+copies the same edge opinion to the other endpoint; there is no additional
+product-message or coordinate-maximum assignment between gradient phases.
+Products exclude the recipient without dividing by its value, so zeros are
+supported. `clip` uses `[-1+1e-6, 1-1e-6]`; `tau_r=0` or `tau_v=0` disables
+that phase's entropy term. Both step sizes must be positive. No momentum,
+step decay, or direct-assignment mode is used.
+
+A zero final vote follows the channel sign (`y=0` means `+1`). The initial
+decision uses the channel sign. Parity is checked before the first cycle and
+after every complete cycle; the hard decision is not fed back to checks.
+The Python decoder's production `step_state` also drives visualization.
+
+This is a proposed local message-passing algorithm with edge memory. Fixed
+projected steps are not guaranteed to increase either objective or a common
+objective for a whole cycle. It is not standard sum-product and no decoding
+performance claim is implied by the objectives.

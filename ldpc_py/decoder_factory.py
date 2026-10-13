@@ -19,8 +19,12 @@ from .bin_ldpc_mgdms import BinLdpcMgdmsDecoder
 from .cpp_bin_ldpc_gdms import CppBinLdpcGdmsDecoder
 from .bin_ldpc_tgdbf import BinLdpcTgdbfDecoder
 from .cpp_bin_ldpc_mgdms import CppBinLdpcMgdmsDecoder
+from .bin_ldpc_mpgd import BinLdpcMpgdDecoder
+from .cpp_bin_ldpc_mpgd import CppBinLdpcMpgdDecoder
 
 _DECODER_TYPES = {
+    "mpgd": BinLdpcMpgdDecoder,
+    "cpp mpgd": CppBinLdpcMpgdDecoder,
     "bit-flipping": BinLdpcBfDecoder,
     "min-sum": BinLdpcMsDecoder,
     "multi gradient descent bit-flipping": BinLdpcMgdbfDecoder,

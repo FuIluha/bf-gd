@@ -12,6 +12,8 @@ plot_server.log
 simulator.log
 *crash.txt
 params.txt
+params_mpgd.txt
+params_mpgd.jsonl
 
 docs/
 
