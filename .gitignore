@@ -16,6 +16,8 @@ params_mpgd.txt
 params_mpgd.jsonl
 params_mpgd_snr0.txt
 params_mpgd_snr0.jsonl
+params_mpgd_snr0_fine100.txt
+params_mpgd_snr0_fine100.jsonl
 
 docs/
 

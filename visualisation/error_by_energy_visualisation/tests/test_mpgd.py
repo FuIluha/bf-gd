@@ -151,7 +151,7 @@ class MpgdTests(unittest.TestCase):
             dict(alpha=2.0, eta_r=0.2, eta_v=0.4, tau_r=0.0, tau_v=0.7),
         ])
         args = tune_mpgd.parse_args([])
-        self.assertEqual(math.prod(len(x) for x in tune_mpgd.parameter_axes(args).values()), 45_056)
+        self.assertEqual(math.prod(len(x) for x in tune_mpgd.parameter_axes(args).values()), 88_209)
 
     def test_tuner_counts_early_wrong_codewords_and_fixed_error_limit(self):
         fake = SimpleNamespace(

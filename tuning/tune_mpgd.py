@@ -21,13 +21,13 @@ from .tune_gdms import comma_separated_floats, default_workers, result_score
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 # Reuse the existing code/channel experiment, replacing only its decoder.
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gdms.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_mpgd_snr0.txt"
-# Refined grid: 11 * 8 * 8 * 8 * 8 = 45,056 combinations.
-DEFAULT_ALPHAS = (0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0, 1.125, 1.25, 1.375, 1.5)
-DEFAULT_ETA_RS = (0.7, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0)
-DEFAULT_ETA_VS = (0.4, 0.5, 0.6, 0.7, 0.8, 1.0, 1.5, 2.0)
-DEFAULT_TAU_RS = (0.0, 0.003, 0.01, 0.02, 0.03, 0.05, 0.075, 0.1)
-DEFAULT_TAU_VS = (0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45)
+DEFAULT_OUTPUT = PROJECT_DIR / "params_mpgd_snr0_fine100.txt"
+# Local grid around the 0 dB winner: 11 * 11 * 9 * 9 * 9 = 88,209 combinations.
+DEFAULT_ALPHAS = (0.75, 0.775, 0.8, 0.825, 0.85, 0.875, 0.9, 0.925, 0.95, 0.975, 1.0)
+DEFAULT_ETA_RS = (1.5, 1.55, 1.6, 1.65, 1.7, 1.75, 1.8, 1.85, 1.9, 1.95, 2.0)
+DEFAULT_ETA_VS = (0.7, 0.725, 0.75, 0.775, 0.8, 0.825, 0.85, 0.875, 0.9)
+DEFAULT_TAU_RS = (0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275, 0.03)
+DEFAULT_TAU_VS = (0.2, 0.2125, 0.225, 0.2375, 0.25, 0.2625, 0.275, 0.2875, 0.3)
 
 _BASE_EXPERIMENT = _SNR_DB = _MAX_TRIALS = _MAX_ERRORS = _SEED = None
 
@@ -39,7 +39,7 @@ def parse_args(argv=None):
     parser.add_argument("--snr", type=float, default=0.0)
     parser.add_argument("--iterations", type=int, default=50, help="fixed limit of complete CN/VN cycles (default: 50)")
     parser.add_argument("--trials", type=int, default=100_000_000)
-    parser.add_argument("--max-errors", type=int, default=50)
+    parser.add_argument("--max-errors", type=int, default=100)
     parser.add_argument("--workers", type=int)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
