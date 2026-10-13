@@ -21,13 +21,14 @@ from .tune_gdms import comma_separated_floats, default_workers, result_score
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 # Reuse the existing code/channel experiment, replacing only its decoder.
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gdms.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_mpgd_snr0_fine100.txt"
-# Local grid around the 0 dB winner: 11 * 11 * 9 * 9 * 9 = 88,209 combinations.
-DEFAULT_ALPHAS = (0.75, 0.775, 0.8, 0.825, 0.85, 0.875, 0.9, 0.925, 0.95, 0.975, 1.0)
-DEFAULT_ETA_RS = (1.5, 1.55, 1.6, 1.65, 1.7, 1.75, 1.8, 1.85, 1.9, 1.95, 2.0)
-DEFAULT_ETA_VS = (0.7, 0.725, 0.75, 0.775, 0.8, 0.825, 0.85, 0.875, 0.9)
-DEFAULT_TAU_RS = (0.01, 0.0125, 0.015, 0.0175, 0.02, 0.0225, 0.025, 0.0275, 0.03)
-DEFAULT_TAU_VS = (0.2, 0.2125, 0.225, 0.2375, 0.25, 0.2625, 0.275, 0.2875, 0.3)
+DEFAULT_OUTPUT = PROJECT_DIR / "params_mpgd_l2_snr0_100.txt"
+# L2 needs a new sweep: 5 * 8 * 7 * 7 * 8 * 7 = 109,760 combinations.
+DEFAULT_ALPHAS = (0.5, 0.75, 0.875, 1.0, 1.25)
+DEFAULT_ETA_RS = (0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 1.75, 2.0)
+DEFAULT_ETA_VS = (0.1, 0.25, 0.5, 0.7, 0.8, 1.0, 1.5)
+DEFAULT_L2_RS = (0.0, 0.01, 0.03, 0.1, 0.3, 1.0, 2.0)
+DEFAULT_L2_VS = (0.0, 0.1, 0.3, 0.5, 1.0, 2.0, 3.0, 4.0)
+DEFAULT_MAX_VALUES = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 1e6)
 
 _BASE_EXPERIMENT = _SNR_DB = _MAX_TRIALS = _MAX_ERRORS = _SEED = None
 
@@ -46,8 +47,8 @@ def parse_args(argv=None):
     parser.add_argument("--max-configs", type=int)
     parser.add_argument("--dry-run", action="store_true", help="print grid size/settings without compiling or simulating")
     for flag, defaults in (("alphas", DEFAULT_ALPHAS), ("eta-rs", DEFAULT_ETA_RS),
-                           ("eta-vs", DEFAULT_ETA_VS), ("tau-rs", DEFAULT_TAU_RS),
-                           ("tau-vs", DEFAULT_TAU_VS)):
+                           ("eta-vs", DEFAULT_ETA_VS), ("l2-rs", DEFAULT_L2_RS),
+                           ("l2-vs", DEFAULT_L2_VS), ("max-values", DEFAULT_MAX_VALUES)):
         parser.add_argument(f"--{flag}", type=comma_separated_floats, default=defaults)
     return parser.parse_args(argv)
 
@@ -57,8 +58,9 @@ def parameter_axes(args):
         "alpha": tuple(dict.fromkeys(args.alphas)),
         "eta_r": tuple(dict.fromkeys(args.eta_rs)),
         "eta_v": tuple(dict.fromkeys(args.eta_vs)),
-        "tau_r": tuple(dict.fromkeys(args.tau_rs)),
-        "tau_v": tuple(dict.fromkeys(args.tau_vs)),
+        "l2_r": tuple(dict.fromkeys(args.l2_rs)),
+        "l2_v": tuple(dict.fromkeys(args.l2_vs)),
+        "max_value": tuple(dict.fromkeys(args.max_values)),
     }
 
 
@@ -145,7 +147,7 @@ def save_best(path, result, args, base_experiment, completed, total):
         **result, "snr_db": args.snr, "seed": args.seed,
         "max_trials": args.trials, "target_frame_errors": args.max_errors,
         "completed_parameter_sets": completed, "total_parameter_sets": total,
-        "epsilon": BinLdpcMpgdDecoder.EPSILON,
+        "regularization": "l2",
         "codec": codec, "channel_output": base_experiment["channel_output"],
     }
     temporary = path.with_name(f".{path.name}.tmp")

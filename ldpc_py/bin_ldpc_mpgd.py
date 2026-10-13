@@ -10,17 +10,15 @@ from visualisation.error_by_energy_visualisation.models import (
 
 
 class BinLdpcMpgdDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
-    """Soft edge opinions, copied CN -> VN -> CN after each gradient phase.
+    """L2-regularized edge opinions, copied CN -> VN -> CN after each phase.
 
-    These are bounded soft signs, not sum-product LLRs. Fixed projected steps
+    These are bounded real opinions, not sum-product LLRs. Fixed projected steps
     need not increase either objective; no line search or momentum is applied.
     """
 
-    EPSILON = 1e-6
-    LIMIT = 1.0 - EPSILON
-
     def __init__(self, alist_filename, **kwargs):
         super().__init__(alist_filename, **kwargs)
+        self._reject_entropy_parameters(kwargs)
         defaults = self.describe().defaults()
         self.parameters = self.validate_parameters({
             key: kwargs.get(key, value) for key, value in defaults.items()
@@ -36,16 +34,30 @@ class BinLdpcMpgdDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
         if np.any(np.bincount(self.edge_vn, minlength=self.block_length) == 0):
             raise ValueError("MPGD requires every variable to have an incident edge")
 
+    @staticmethod
+    def _reject_entropy_parameters(parameters):
+        if "tau_r" in parameters or "tau_v" in parameters:
+            raise ValueError(
+                "MPGD now uses L2: replace entropy parameters tau_r/tau_v with "
+                "l2_r/l2_v and retune their values"
+            )
+
+    @classmethod
+    def validate_parameters(cls, parameters):
+        cls._reject_entropy_parameters(parameters)
+        return super().validate_parameters(parameters)
+
     @classmethod
     def describe(cls):
         return DecoderSpec(
-            key="mpgd", title="MPGD",
+            key="mpgd", title="MPGD (L2)",
             parameters=(
                 ParameterSpec("alpha", "alpha", "float", 1.0, 0.0),
                 ParameterSpec("eta_r", "eta_R (CN)", "float", 0.1, 1e-12),
                 ParameterSpec("eta_v", "eta_V (VN)", "float", 0.1, 1e-12),
-                ParameterSpec("tau_r", "tau_R (энтропия CN)", "float", 0.1, 0.0),
-                ParameterSpec("tau_v", "tau_V (энтропия VN)", "float", 0.1, 0.0),
+                ParameterSpec("l2_r", "lambda_R (L2 CN)", "float", 0.1, 0.0),
+                ParameterSpec("l2_v", "lambda_V (L2 VN)", "float", 0.1, 0.0),
+                ParameterSpec("max_value", "Максимальный модуль сообщения", "float", 1.0, 1e-12),
             ),
             observables=(
                 ObservableSpec("step", "Изменение s за цикл", True),
@@ -75,21 +87,15 @@ class BinLdpcMpgdDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
     def variable_totals(self, values):
         return np.bincount(self.edge_vn, weights=values, minlength=self.block_length)
 
-    @staticmethod
-    def entropy(values):
-        probability = (1.0 + values) / 2.0
-        return -(probability * np.log(probability)
-                 + (1.0 - probability) * np.log1p(-probability))
-
     def objectives(self, s, u, received, parameters=None):
         """Local CN/VN scores, useful for mathematical checks and analysis."""
         p = self.parameters if parameters is None else parameters
         totals = self.variable_totals(u)
         r = np.multiply.reduceat(s, self.check_offsets[:-1]).sum()
-        r += p["tau_r"] * self.entropy(s).sum()
+        r -= 0.5 * p["l2_r"] * np.dot(s, s)
         v = p["alpha"] * np.dot(np.asarray(received, dtype=np.float64), totals)
         v += 0.5 * (np.dot(totals, totals) - np.dot(u, u))
-        v += p["tau_v"] * self.entropy(u).sum()
+        v -= 0.5 * p["l2_v"] * np.dot(u, u)
         return float(r), float(v)
 
     def initial_state(self, received, parameters):
@@ -99,30 +105,28 @@ class BinLdpcMpgdDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
         channel = parameters["alpha"] * y
         if not np.all(np.isfinite(channel)):
             raise FloatingPointError("Non-finite MPGD channel field")
-        s = np.clip(np.tanh(channel[self.edge_vn] / 2.0), -self.LIMIT, self.LIMIT)
+        limit = parameters["max_value"]
+        s = np.clip(np.tanh(channel[self.edge_vn] / 2.0), -limit, limit)
         return {"s": s, "u": s.copy(), "x": y.copy()}
 
     def step_state(self, state, received, parameters, iteration, rng):
         p = parameters
         s = state["s"]
-        direction_r = self.check_gradient(s)
-        if p["tau_r"]:
-            direction_r -= p["tau_r"] * np.arctanh(s)
+        limit = p["max_value"]
+        direction_r = self.check_gradient(s) - p["l2_r"] * s
         raw_u = s + p["eta_r"] * direction_r
         if not np.all(np.isfinite(raw_u)):
             raise FloatingPointError("Non-finite MPGD CN step")
-        u = np.clip(raw_u, -self.LIMIT, self.LIMIT)
+        u = np.clip(raw_u, -limit, limit)
 
         direction_v = (
             p["alpha"] * np.asarray(received, dtype=np.float64)[self.edge_vn]
-            + self.variable_totals(u)[self.edge_vn] - u
+            + self.variable_totals(u)[self.edge_vn] - u - p["l2_v"] * u
         )
-        if p["tau_v"]:
-            direction_v -= p["tau_v"] * np.arctanh(u)
         raw_s = u + p["eta_v"] * direction_v
         if not np.all(np.isfinite(raw_s)):
             raise FloatingPointError("Non-finite MPGD VN step")
-        next_s = np.clip(raw_s, -self.LIMIT, self.LIMIT)
+        next_s = np.clip(raw_s, -limit, limit)
         x = self.variable_totals(next_s)
         # A zero vote follows the channel; x is never sent back to checks.
         x = np.where(x != 0, x, np.where(np.asarray(received) >= 0, 1.0, -1.0))
@@ -153,8 +157,14 @@ class BinLdpcMpgdDecoder(BinLdpcDecoderBase, VisualizableDecoderBase):
         state = self.initial_state(llr_in, self.parameters)
         for iteration in range(self.n_iterations):
             if self.is_decoded(state):
-                llr_out[:] = state["x"]
+                self._write_output(state["x"], llr_out)
                 return iteration
             state = self.step_state(state, llr_in, self.parameters, iteration, rng).fields
-        llr_out[:] = state["x"]
+        self._write_output(state["x"], llr_out)
         return self.n_iterations
+
+    @staticmethod
+    def _write_output(x, output):
+        if not np.all(np.isfinite(x)) or np.any(np.abs(x) > np.finfo(output.dtype).max):
+            raise FloatingPointError("MPGD decision exceeds the output floating-point range")
+        output[:] = x

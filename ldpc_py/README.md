@@ -60,17 +60,17 @@ C++ implementations. With `L > 0`, `rho` must contain exactly `L` values.
 Algorithm names: `mpgd` (Python, also registered in the visualizer) and
 `cpp mpgd` (native loop for simulations and tuning). Both implement the same
 deterministic algorithm. One iteration is a complete CN phase followed by a
-VN phase. The decoder parameters are `alpha`, `eta_r`, `eta_v`, `tau_r`, and
-`tau_v`; defaults are `1.0, 0.1, 0.1, 0.1, 0.1` respectively.
+VN phase. The decoder parameters are `alpha`, `eta_r`, `eta_v`, `l2_r`,
+`l2_v`, and `max_value`; defaults are `1.0, 0.1, 0.1, 0.1, 0.1, 1.0`.
 
-States `s[i->a]` and `u[a->i]` are soft signs, not LLRs. Define binary entropy
-`h(z) = -(1+z)/2*log((1+z)/2) - (1-z)/2*log((1-z)/2)`. The local objectives are
+States `s[i->a]` and `u[a->i]` are bounded real edge opinions, not LLRs or
+posterior probabilities. The L2-regularized local objectives are
 
 ```
-R(s) = sum_a product(s[i->a] for i in N(a)) + tau_r*sum_edges h(s)
+R(s) = sum_a product(s[i->a] for i in N(a)) - l2_r/2*sum_edges s^2
 V(u) = alpha*sum_i y[i]*sum(u[a->i] for a in N(i))
        + sum_i sum(u[a->i]*u[b->i] for unordered pairs a,b in N(i))
-       + tau_v*sum_edges h(u)
+       - l2_v/2*sum_edges u^2
 ```
 
 Initialization and synchronous updates:
@@ -78,10 +78,10 @@ Initialization and synchronous updates:
 ```
 s[i->a] = clip(tanh(alpha*y[i]/2))
 u[a->i] = clip(s[i->a] + eta_r*(product(s[j->a] for j in N(a) excluding i)
-                               - tau_r*atanh(s[i->a])))
+                               - l2_r*s[i->a]))
 s_new[i->a] = clip(u[a->i] + eta_v*(alpha*y[i]
                     + sum(u[b->i] for b in N(i) excluding a)
-                    - tau_v*atanh(u[a->i])))
+                    - l2_v*u[a->i]))
 x[i] = sign(sum(s_new[i->a] for a in N(i)))
 ```
 
@@ -89,9 +89,16 @@ Each phase reads a fixed snapshot of its inputs. Sending the updated state
 copies the same edge opinion to the other endpoint; there is no additional
 product-message or coordinate-maximum assignment between gradient phases.
 Products exclude the recipient without dividing by its value, so zeros are
-supported. `clip` uses `[-1+1e-6, 1-1e-6]`; `tau_r=0` or `tau_v=0` disables
-that phase's entropy term. Both step sizes must be positive. No momentum,
-step decay, or direct-assignment mode is used.
+supported. `clip` uses the tunable domain `[-max_value, max_value]` in
+initialization and both phases. `max_value` must be finite and positive; it
+does not rescale initialization. A value above 1 allows states above 1.
+`l2_r=0` or `l2_v=0` disables that phase's regularizer. Both step sizes must
+be positive. Iterations contain no `atanh` or other transcendental functions;
+`tanh` is used only for initialization. No momentum, step decay, or
+direct-assignment mode is used.
+
+The earlier entropy parameters `tau_r` / `tau_v` are rejected explicitly:
+their values are not interchangeable with L2 weights and must be retuned.
 
 A zero final vote follows the channel sign (`y=0` means `+1`). The initial
 decision uses the channel sign. Parity is checked before the first cycle and
@@ -102,3 +109,9 @@ This is a proposed local message-passing algorithm with edge memory. Fixed
 projected steps are not guaranteed to increase either objective or a common
 objective for a whole cycle. It is not standard sum-product and no decoding
 performance claim is implied by the objectives.
+
+A very large `max_value` approximates an unrestricted range only while the
+trajectory stays below it. The CN product can outgrow quadratic L2 when its
+degree exceeds two, so L2 alone does not guarantee bounded trajectories.
+Non-finite steps or decisions outside the output dtype range raise
+`FloatingPointError`; the tuner records those candidates as invalid.

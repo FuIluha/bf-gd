@@ -8,10 +8,10 @@
 class MpgdDecoder {
  public:
   MpgdDecoder(uint32_t n, uint32_t m, uint32_t iterations, double alpha,
-              double eta_r, double eta_v, double tau_r, double tau_v,
+              double eta_r, double eta_v, double l2_r, double l2_v, double max_value,
               const uint32_t* variables, const uint32_t* offsets)
       : n_(n), m_(m), iterations_(iterations), alpha_(alpha), eta_r_(eta_r),
-        eta_v_(eta_v), tau_r_(tau_r), tau_v_(tau_v),
+        eta_v_(eta_v), l2_r_(l2_r), l2_v_(l2_v), max_value_(max_value),
         variables_(variables, variables + offsets[m]), offsets_(offsets, offsets + m + 1),
         s_(offsets[m]), u_(offsets[m]), prefix_(offsets[m]), gradient_(offsets[m]),
         channel_(n), x_(n), totals_(n) {}
@@ -28,7 +28,7 @@ class MpgdDecoder {
     }
     for (uint32_t iteration = 0; iteration < iterations_; ++iteration) {
       if (Satisfied()) {
-        Write(output);
+        if (!Write(output)) return Invalid();
         return iteration;
       }
 
@@ -47,8 +47,7 @@ class MpgdDecoder {
       }
       std::fill(totals_.begin(), totals_.end(), 0.0);
       for (uint32_t e = 0; e < s_.size(); ++e) {
-        const double direction = gradient_[e]
-            - (tau_r_ == 0.0 ? 0.0 : tau_r_ * std::atanh(s_[e]));
+        const double direction = gradient_[e] - l2_r_ * s_[e];
         const double next = s_[e] + eta_r_ * direction;
         if (!std::isfinite(next)) return Invalid();
         u_[e] = Clip(next);
@@ -57,7 +56,7 @@ class MpgdDecoder {
       // All VN directions read the same completed CN phase.
       for (uint32_t e = 0; e < s_.size(); ++e) {
         const double direction = channel_[variables_[e]] + totals_[variables_[e]] - u_[e]
-            - (tau_v_ == 0.0 ? 0.0 : tau_v_ * std::atanh(u_[e]));
+            - l2_v_ * u_[e];
         const double next = u_[e] + eta_v_ * direction;
         if (!std::isfinite(next)) return Invalid();
         s_[e] = Clip(next);
@@ -68,13 +67,13 @@ class MpgdDecoder {
         if (x_[v] == 0.0) x_[v] = input[v] >= 0 ? 1.0 : -1.0;
       }
     }
-    Write(output);
+    if (!Write(output)) return Invalid();
     return iterations_;
   }
 
  private:
   static uint32_t Invalid() { return std::numeric_limits<uint32_t>::max(); }
-  static double Clip(double v) { return std::max(-0.999999, std::min(0.999999, v)); }
+  double Clip(double v) const { return std::max(-max_value_, std::min(max_value_, v)); }
   bool Satisfied() const {
     for (uint32_t c = 0; c < m_; ++c) {
       bool odd = false;
@@ -86,22 +85,28 @@ class MpgdDecoder {
     return true;
   }
   template <typename Float>
-  void Write(Float* output) const {
-    for (uint32_t v = 0; v < n_; ++v) output[v] = static_cast<Float>(x_[v]);
+  bool Write(Float* output) const {
+    for (uint32_t v = 0; v < n_; ++v) {
+      if (!std::isfinite(x_[v]) || std::abs(x_[v]) > std::numeric_limits<Float>::max()) {
+        return false;
+      }
+      output[v] = static_cast<Float>(x_[v]);
+    }
+    return true;
   }
 
   uint32_t n_, m_, iterations_;
-  double alpha_, eta_r_, eta_v_, tau_r_, tau_v_;
+  double alpha_, eta_r_, eta_v_, l2_r_, l2_v_, max_value_;
   std::vector<uint32_t> variables_, offsets_;
   std::vector<double> s_, u_, prefix_, gradient_, channel_, x_, totals_;
 };
 
 extern "C" void* cpp_mpgd_create(
     uint32_t n, uint32_t m, uint32_t iterations, double alpha,
-    double eta_r, double eta_v, double tau_r, double tau_v,
+    double eta_r, double eta_v, double l2_r, double l2_v, double max_value,
     const uint32_t* variables, const uint32_t* offsets) {
   try {
-    return new MpgdDecoder(n, m, iterations, alpha, eta_r, eta_v, tau_r, tau_v, variables, offsets);
+    return new MpgdDecoder(n, m, iterations, alpha, eta_r, eta_v, l2_r, l2_v, max_value, variables, offsets);
   } catch (...) {
     return nullptr;
   }

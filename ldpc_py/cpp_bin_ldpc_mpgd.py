@@ -38,7 +38,7 @@ def load_library():
     lib_compile()
     lib = ctypes.CDLL(str(LIBRARY_PATH))
     indices = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags="C_CONTIGUOUS")
-    lib.cpp_mpgd_create.argtypes = [ctypes.c_uint32] * 3 + [ctypes.c_double] * 5 + [indices] * 2
+    lib.cpp_mpgd_create.argtypes = [ctypes.c_uint32] * 3 + [ctypes.c_double] * 6 + [indices] * 2
     lib.cpp_mpgd_create.restype = ctypes.c_void_p
     for dtype, name in ((np.float32, "float32"), (np.float64, "float64")):
         array = np.ctypeslib.ndpointer(dtype=dtype, ndim=1, flags="C_CONTIGUOUS")
@@ -61,7 +61,7 @@ class CppBinLdpcMpgdDecoder(BinLdpcMpgdDecoder):
         self._library = load_library()
         self._decoder = self._library.cpp_mpgd_create(
             self.block_length, self.n_checks, self.n_iterations,
-            p["alpha"], p["eta_r"], p["eta_v"], p["tau_r"], p["tau_v"],
+            p["alpha"], p["eta_r"], p["eta_v"], p["l2_r"], p["l2_v"], p["max_value"],
             np.ascontiguousarray(self.edge_vn, dtype=np.uint32),
             np.ascontiguousarray(self.check_offsets, dtype=np.uint32),
         )

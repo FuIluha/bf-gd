@@ -31,15 +31,15 @@ def decoder(cls=BinLdpcMpgdDecoder, iterations=5, **params):
 
 class MpgdTests(unittest.TestCase):
     def test_objective_gradients_by_finite_differences(self):
-        dec = decoder(alpha=0.7, tau_r=0.3, tau_v=0.6)
+        dec = decoder(alpha=0.7, l2_r=0.3, l2_v=0.6, max_value=2.0)
         p = dec.parameters
         rng = np.random.default_rng(81)
-        s, u = rng.uniform(-0.8, 0.8, (2, dec.edges_count))
+        s, u = rng.uniform(-1.5, 1.5, (2, dec.edges_count))
         y = rng.normal(size=6)
-        expected_r = dec.check_gradient(s) - p["tau_r"] * np.arctanh(s)
+        expected_r = dec.check_gradient(s) - p["l2_r"] * s
         expected_v = (p["alpha"] * y[dec.edge_vn]
                       + dec.variable_totals(u)[dec.edge_vn] - u
-                      - p["tau_v"] * np.arctanh(u))
+                      - p["l2_v"] * u)
         for edge in range(dec.edges_count):
             plus, minus = s.copy(), s.copy()
             plus[edge] += 1e-5
@@ -53,22 +53,22 @@ class MpgdTests(unittest.TestCase):
             self.assertAlmostEqual(derivative, expected_v[edge], places=8)
 
     def test_synchronous_phases_match_scalar_reference(self):
-        dec = decoder(alpha=0.7, eta_r=0.3, eta_v=0.2, tau_r=0.4, tau_v=0.6)
+        dec = decoder(alpha=0.7, eta_r=0.3, eta_v=0.2, l2_r=0.4, l2_v=0.6, max_value=1.25)
         p = dec.parameters
         y = np.array([-0.2, 1.1, 0.7, 1.0, 0.9, 0.8])
         state = dec.initial_state(y, p)
-        state["s"] = np.array([0.0, -0.5, 0.0, 0.6, -0.3, 0.8, 0.2, -0.7, 0.0, 0.9])
+        state["s"] = np.array([0.0, -0.5, 0.0, 0.6, -0.3, 1.2, 0.2, -0.7, 0.0, 0.9])
         original = {key: value.copy() for key, value in state.items()}
         u = np.empty(dec.edges_count)
         for e, c in enumerate(dec.edge_cn):
             others = [state["s"][j] for j in range(dec.edges_count) if dec.edge_cn[j] == c and j != e]
             u[e] = np.clip(state["s"][e] + p["eta_r"] * (
-                math.prod(others) - p["tau_r"] * math.atanh(state["s"][e])), -dec.LIMIT, dec.LIMIT)
+                math.prod(others) - p["l2_r"] * state["s"][e]), -p["max_value"], p["max_value"])
         expected = np.empty_like(u)
         for e, v in enumerate(dec.edge_vn):
             other_sum = sum(u[j] for j in range(dec.edges_count) if dec.edge_vn[j] == v and j != e)
             expected[e] = np.clip(u[e] + p["eta_v"] * (
-                p["alpha"] * y[v] + other_sum - p["tau_v"] * math.atanh(u[e])), -dec.LIMIT, dec.LIMIT)
+                p["alpha"] * y[v] + other_sum - p["l2_v"] * u[e]), -p["max_value"], p["max_value"])
         actual = dec.step_state(state, y, p, 0, None)
         np.testing.assert_allclose(actual.fields["u"], u, atol=1e-15)
         np.testing.assert_allclose(actual.fields["s"], expected, atol=1e-15)
@@ -77,13 +77,15 @@ class MpgdTests(unittest.TestCase):
         expected_vote = np.array([sum(expected[dec.edge_vn == v]) for v in range(6)])
         np.testing.assert_allclose(actual.fields["x"], expected_vote)
 
-    def test_python_cpp_agree_including_clipping_and_no_entropy(self):
+    def test_python_cpp_agree_with_different_bounds_and_zero_l2(self):
         rng = np.random.default_rng(92)
         words = np.vstack((rng.normal(size=(12, 6)), np.zeros(6),
                            [-1e6, 1e6, 0.0, 1.0, -1.0, 0.01]))
         for params in (
-            {}, {"alpha": 0.0, "tau_r": 0.0, "tau_v": 0.0},
-            {"alpha": 2.0, "eta_r": 1.5, "eta_v": 0.7, "tau_r": 4.0, "tau_v": 2.0},
+            {}, {"alpha": 0.0, "l2_r": 0.0, "l2_v": 0.0},
+            {"alpha": 2.0, "eta_r": 1.5, "eta_v": 0.7, "l2_r": 4.0, "l2_v": 2.0, "max_value": 0.5},
+            {"alpha": 0.75, "eta_r": 1.75, "eta_v": 0.8, "l2_r": 0.03, "l2_v": 0.3, "max_value": 2.0},
+            {"l2_r": 0.0, "l2_v": 0.0, "max_value": 1e6},
         ):
             for limit in (1, 3, 20):
                 py = decoder(iterations=limit, **params)
@@ -98,6 +100,32 @@ class MpgdTests(unittest.TestCase):
                             again = np.empty_like(y)
                             cpp.decode(y, again)
                             np.testing.assert_array_equal(b, again)
+
+    def test_configurable_bound_applies_to_initialization_and_both_phases(self):
+        y = np.array([-2.0, 1.1, 0.7, 1.0, 0.9, 0.8])
+        dec = decoder(max_value=0.4, eta_r=5.0, eta_v=5.0, l2_r=0.0, l2_v=0.0)
+        state = dec.initial_state(y, dec.parameters)
+        self.assertLessEqual(np.max(np.abs(state["s"])), 0.4)
+        after = dec.step_state(state, y, dec.parameters, 0, None).fields
+        for key in ("s", "u"):
+            self.assertLessEqual(np.max(np.abs(after[key])), 0.4)
+        self.assertTrue(np.any(np.abs(after["s"]) == 0.4))
+
+        dec = decoder(max_value=1e6, eta_r=10.0, eta_v=10.0, l2_r=0.0, l2_v=0.0)
+        state = dec.initial_state(y, dec.parameters)
+        state["s"][:] = 2.0
+        after = dec.step_state(state, y, dec.parameters, 0, None).fields
+        for key in ("s", "u"):
+            self.assertGreater(np.max(np.abs(after[key])), 2.0)
+            self.assertLess(np.max(np.abs(after[key])), 1e6)
+
+    def test_output_overflow_is_reported_before_float32_conversion(self):
+        y = np.array([-0.2, 1.1, 0.7, 1.0, 0.9, 0.8], dtype=np.float32)
+        for cls in (BinLdpcMpgdDecoder, CppBinLdpcMpgdDecoder):
+            dec = decoder(cls, iterations=1, max_value=1e50,
+                          eta_r=1e20, eta_v=1e20, l2_r=0.0, l2_v=0.0)
+            with self.assertRaises(FloatingPointError):
+                dec.decode(y, np.empty_like(y))
 
     def test_codeword_sign_symmetry(self):
         bits = next(np.array(z) for z in itertools.product((0, 1), repeat=6)
@@ -129,9 +157,15 @@ class MpgdTests(unittest.TestCase):
 
     def test_validation_and_factory(self):
         for key, value in (("eta_r", 0), ("eta_v", -1), ("alpha", -1),
-                           ("tau_r", -1), ("tau_v", np.nan), ("eta_r", np.inf)):
+                           ("l2_r", -1), ("l2_v", np.nan), ("eta_r", np.inf),
+                           ("max_value", 0), ("max_value", -1), ("max_value", np.inf)):
             with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 decoder(**{key: value})
+        for cls in (BinLdpcMpgdDecoder, CppBinLdpcMpgdDecoder):
+            with self.assertRaisesRegex(ValueError, "L2"):
+                decoder(cls, tau_r=0.02, tau_v=0.25)
+        with self.assertRaisesRegex(ValueError, "L2"):
+            BinLdpcMpgdDecoder.validate_parameters({"tau_r": 0.02})
         for name, cls in (("mpgd", BinLdpcMpgdDecoder), ("cpp mpgd", CppBinLdpcMpgdDecoder)):
             dec = create_decoder(name, None, pcm=PCM, block_length=6, n_checks=3,
                                  is_systematic=False, n_iterations=3)
@@ -144,14 +178,15 @@ class MpgdTests(unittest.TestCase):
     def test_tuner_grid_has_no_implicit_baseline(self):
         args = tune_mpgd.parse_args([
             "--alphas", "2", "--eta-rs", "0.2,0.2", "--eta-vs", "0.4",
-            "--tau-rs", "0", "--tau-vs", "0.7",
+            "--l2-rs", "0", "--l2-vs", "0.7", "--max-values", "1000000",
         ])
         tune_mpgd.validate_args(args)
         self.assertEqual(list(tune_mpgd.parameter_grid(args)), [
-            dict(alpha=2.0, eta_r=0.2, eta_v=0.4, tau_r=0.0, tau_v=0.7),
+            dict(alpha=2.0, eta_r=0.2, eta_v=0.4, l2_r=0.0, l2_v=0.7, max_value=1e6),
         ])
         args = tune_mpgd.parse_args([])
-        self.assertEqual(math.prod(len(x) for x in tune_mpgd.parameter_axes(args).values()), 88_209)
+        self.assertEqual(math.prod(len(x) for x in tune_mpgd.parameter_axes(args).values()), 109_760)
+        self.assertIn(1e6, tune_mpgd.parameter_axes(args)["max_value"])
 
     def test_tuner_counts_early_wrong_codewords_and_fixed_error_limit(self):
         fake = SimpleNamespace(
