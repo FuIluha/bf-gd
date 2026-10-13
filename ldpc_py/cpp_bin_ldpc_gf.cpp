@@ -5,10 +5,14 @@
 #include <vector>
 
 // Classic gradient flow (GF) decoder, Euler discretization:
-//   x <- x - eta * (x - y + gamma * grad h(x)),  x(0) = 0
+//   x <- clip(x - eta * (x - y + gamma * grad h(x)), -theta, theta),
+//   x(0) = 0, y or sign(y)
 //   h(x) = alpha * sum_j (x_j^2 - 1)^2 + beta * sum_i (prod_{j in A(i)} x_j - 1)^2
 class CppGfDecoder {
  public:
+  // Initial point x(0); the order matches INIT_MODES in bin_ldpc_gf.py.
+  enum InitMode : uint32_t { kInitZero = 0, kInitY = 1, kInitHard = 2 };
+
   CppGfDecoder(
       uint32_t block_length,
       uint32_t n_checks,
@@ -17,6 +21,8 @@ class CppGfDecoder {
       double beta,
       double gamma,
       double eta,
+      uint32_t init_mode,
+      double theta,
       const uint32_t* edge_vn,
       const uint32_t* check_offsets)
       : block_length_(block_length),
@@ -26,6 +32,8 @@ class CppGfDecoder {
         beta_(beta),
         gamma_(gamma),
         eta_(eta),
+        init_mode_(init_mode),
+        theta_(theta),
         edge_vn_(edge_vn, edge_vn + check_offsets[n_checks]),
         check_offsets_(check_offsets, check_offsets + n_checks + 1),
         x_(block_length),
@@ -33,7 +41,16 @@ class CppGfDecoder {
 
   template <typename Float>
   uint32_t Decode(const Float* input, Float* output) {
-    std::fill(x_.begin(), x_.end(), 0.0);
+    for (uint32_t variable = 0; variable < block_length_; ++variable) {
+      const double value = static_cast<double>(input[variable]);
+      if (init_mode_ == kInitY) {
+        x_[variable] = value;
+      } else if (init_mode_ == kInitHard) {
+        x_[variable] = value >= 0.0 ? 1.0 : -1.0;
+      } else {
+        x_[variable] = 0.0;
+      }
+    }
 
     for (uint32_t iteration = 0; iteration < n_iterations_; ++iteration) {
       CalculateGradient();
@@ -41,6 +58,8 @@ class CppGfDecoder {
         x_[variable] -= eta_ * (
             x_[variable] - static_cast<double>(input[variable])
             + gamma_ * gradient_[variable]);
+        // std::clamp keeps NaN, so a broken state is still caught below.
+        x_[variable] = std::clamp(x_[variable], -theta_, theta_);
       }
       if (!ValuesFit<Float>()) {
         return std::numeric_limits<uint32_t>::max();
@@ -111,6 +130,8 @@ class CppGfDecoder {
   double beta_;
   double gamma_;
   double eta_;
+  uint32_t init_mode_;
+  double theta_;
   std::vector<uint32_t> edge_vn_;
   std::vector<uint32_t> check_offsets_;
   std::vector<double> x_;
@@ -125,8 +146,13 @@ extern "C" void* cpp_gf_create(
     double beta,
     double gamma,
     double eta,
+    uint32_t init_mode,
+    double theta,
     const uint32_t* edge_vn,
     const uint32_t* check_offsets) {
+  if (init_mode > CppGfDecoder::kInitHard || !(theta >= 1.0)) {
+    return nullptr;
+  }
   try {
     return new CppGfDecoder(
         block_length,
@@ -136,6 +162,8 @@ extern "C" void* cpp_gf_create(
         beta,
         gamma,
         eta,
+        init_mode,
+        theta,
         edge_vn,
         check_offsets);
   } catch (...) {

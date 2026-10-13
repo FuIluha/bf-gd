@@ -21,11 +21,11 @@ DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_mgdms.txt"
 import numpy as np
 
 
-DEFAULT_LEARNING_RATES = tuple(np.round(np.arange(0.2, 1.0 + 1e-9, 0.2), 6))
-DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.01, 0.03, 0.05, 0.1)
-DEFAULT_ALPHAS = tuple(np.round(np.arange(0.25, 3.0 + 1e-9, 0.25), 6))
-DEFAULT_L2 = (0.0,0.6, 1.0, 1.2)
-DEFAULT_MOMENTUM_VALUES = tuple(np.round(np.arange(0.0, 0.96 + 1e-9, 0.04), 6))
+DEFAULT_LEARNING_RATES = (0.4, 0.55, 0.7, 0.8, 0.9, 1.0)
+DEFAULT_LEARNING_RATE_DECAYS = (0.0, 0.02, 0.05, 0.1)
+DEFAULT_ALPHAS = (1.0, 1.25, 1.5, 2.0)
+DEFAULT_L2 = (1.0, 1.15, 1.25, 1.35, 1.5)
+DEFAULT_MOMENTUM_VALUES = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
 
 
 

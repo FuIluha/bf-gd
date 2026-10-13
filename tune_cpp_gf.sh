@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
 
 # Submit the C++ GF parameter search to Slurm.
-# Usage: sbatch tune_cpp_gf.sh [tune_cpp_gf.py options, e.g. --snr -2 --metric fer]
+# Usage: sbatch tune_cpp_gf.sh [tune_cpp_gf.py options]
+#
+#   sbatch tune_cpp_gf.sh --snr -1 --trials 1000000 --max-errors 100
+#   sbatch tune_cpp_gf.sh --snr -1.5 --max-errors 200
+#   sbatch tune_cpp_gf.sh --snr -1 --inits zero,hard --thetas 1,1.1,1.2
+#
+# --snr         SNR in dB (default -1)
+# --trials      maximum frames per candidate (default 100000000)
+# --max-errors  a candidate stops after this many frame errors (default 100)
+# --iterations  decoder iterations (default 100, overrides the config)
+# Best parameters: params_cpp_gf.txt, every candidate: params_cpp_gf.jsonl,
+# progress: logs/tune_gf_<job id>.out
 
 #SBATCH --job-name=gf-tune
 #SBATCH --output=logs/tune_gf_%j.out
@@ -11,7 +22,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=128
 #SBATCH --mem=32G
-#SBATCH --time=04:00:00
+#SBATCH --time=24:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 
 set -euo pipefail

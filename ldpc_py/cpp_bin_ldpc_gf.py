@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from .bin_ldpc import BinLdpcDecoderBase
+from .bin_ldpc_gf import INIT_MODES
 
 
 SOURCE_PATH = Path(__file__).with_suffix(".cpp")
@@ -77,6 +78,8 @@ def load_library():
         ctypes.c_double,  # beta
         ctypes.c_double,  # gamma
         ctypes.c_double,  # eta
+        ctypes.c_uint32,  # init mode, index in INIT_MODES
+        ctypes.c_double,  # theta
         uint32_array,
         uint32_array,
     ]
@@ -106,11 +109,18 @@ class CppBinLdpcGfDecoder(BinLdpcDecoderBase):
         self.beta = float(kwargs["beta"])
         self.gamma = float(kwargs["gamma"])
         self.eta = float(kwargs["eta"])
+        self.init = kwargs.get("init", "zero")
+        # After every Euler step x is clipped to [-theta, theta]; inf disables clipping.
+        self.theta = float(kwargs.get("theta", np.inf))
 
         if self.eta <= 0:
             raise ValueError("eta must be positive")
         if self.alpha < 0 or self.beta < 0 or self.gamma < 0:
             raise ValueError("alpha, beta and gamma must be non-negative")
+        if self.init not in INIT_MODES:
+            raise ValueError(f"init must be one of {INIT_MODES}")
+        if not self.theta >= 1:
+            raise ValueError("theta must be at least 1")
 
         edge_cn, edge_vn = np.nonzero(self.pcm)
         self.edge_vn = np.ascontiguousarray(edge_vn, dtype=np.uint32)
@@ -129,6 +139,8 @@ class CppBinLdpcGfDecoder(BinLdpcDecoderBase):
             self.beta,
             self.gamma,
             self.eta,
+            INIT_MODES.index(self.init),
+            self.theta,
             self.edge_vn,
             self.check_offsets,
         )

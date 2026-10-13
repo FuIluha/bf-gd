@@ -3,6 +3,7 @@
 The GF-ODE  dx/dt = -(x - y + gamma * grad h(x))  is solved by the Euler
 method with step eta; every decoder iteration is one Euler step, so
 n_iterations = N and the sampling time is T = N * eta.
+After every step x is clipped to [-theta, theta] (theta = inf: no clipping).
 
 Code potential energy:
     h(x) = alpha * sum_j (x_j^2 - 1)^2
@@ -13,6 +14,10 @@ import numpy as np
 from .bin_ldpc import BinLdpcDecoderBase
 
 
+# Initial point x(0): the origin, the received vector y, or its hard decision sign(y).
+INIT_MODES = ("zero", "y", "hard")
+
+
 class BinLdpcGfDecoder(BinLdpcDecoderBase):
     """Classic gradient flow decoder for the AWGN channel (Euler method)."""
     def __init__(self, alist_filename, **kwargs):
@@ -21,11 +26,18 @@ class BinLdpcGfDecoder(BinLdpcDecoderBase):
         self.beta = float(kwargs["beta"])
         self.gamma = float(kwargs["gamma"])
         self.eta = float(kwargs["eta"])
+        self.init = kwargs.get("init", "zero")
+        # After every Euler step x is clipped to [-theta, theta]; inf disables clipping.
+        self.theta = float(kwargs.get("theta", np.inf))
 
         if self.eta <= 0:
             raise ValueError("eta must be positive")
         if self.alpha < 0 or self.beta < 0 or self.gamma < 0:
             raise ValueError("alpha, beta and gamma must be non-negative")
+        if self.init not in INIT_MODES:
+            raise ValueError(f"init must be one of {INIT_MODES}")
+        if not self.theta >= 1:
+            raise ValueError("theta must be at least 1")
 
         self.edge_cn, self.edge_vn = np.nonzero(self.pcm)
 
@@ -92,15 +104,24 @@ class BinLdpcGfDecoder(BinLdpcDecoderBase):
         return 0.5 * np.sum((x - y) ** 2) + self.gamma * self.potential_energy(x)
 
     def step(self, x, y):
-        """One Euler step of the GF-ODE, eq. (10)."""
+        """One Euler step of the GF-ODE, eq. (10), clipped to [-theta, theta]."""
         next_x = x - self.eta * (x - y + self.gamma * self.potential_gradient(x))
+        next_x = np.clip(next_x, -self.theta, self.theta)
         if not np.all(np.isfinite(next_x)):
             raise FloatingPointError("Non-finite GF state")
         return next_x
 
+    def initial_point(self, y):
+        """Initial point x(0) of the GF-ODE."""
+        if self.init == "y":
+            return y.copy()
+        if self.init == "hard":
+            return np.where(y >= 0, 1.0, -1.0)
+        return np.zeros_like(y)
+
     def decode(self, llr_in, llr_out, rng=None):
         y = llr_in.astype(np.float64, copy=True)
-        x = np.zeros_like(y)
+        x = self.initial_point(y)
 
         for _ in range(self.n_iterations):
             x = self.step(x, y)
