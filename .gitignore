@@ -14,6 +14,8 @@ simulator.log
 params.txt
 params_mpgd.txt
 params_mpgd.jsonl
+params_mpgd_snr0.txt
+params_mpgd_snr0.jsonl
 
 docs/
 

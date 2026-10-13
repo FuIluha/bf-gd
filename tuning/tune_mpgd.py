@@ -21,10 +21,13 @@ from .tune_gdms import comma_separated_floats, default_workers, result_score
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 # Reuse the existing code/channel experiment, replacing only its decoder.
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gdms.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_mpgd.txt"
-DEFAULT_ALPHAS = (0.0, 0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0)
-DEFAULT_STEPS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.7, 1.0, 1.5)
-DEFAULT_TAUS = (0.0, 0.01, 0.03, 0.1, 0.3, 0.6, 1.0, 2.0, 4.0)
+DEFAULT_OUTPUT = PROJECT_DIR / "params_mpgd_snr0.txt"
+# Refined grid: 11 * 8 * 8 * 8 * 8 = 45,056 combinations.
+DEFAULT_ALPHAS = (0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0, 1.125, 1.25, 1.375, 1.5)
+DEFAULT_ETA_RS = (0.7, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0)
+DEFAULT_ETA_VS = (0.4, 0.5, 0.6, 0.7, 0.8, 1.0, 1.5, 2.0)
+DEFAULT_TAU_RS = (0.0, 0.003, 0.01, 0.02, 0.03, 0.05, 0.075, 0.1)
+DEFAULT_TAU_VS = (0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45)
 
 _BASE_EXPERIMENT = _SNR_DB = _MAX_TRIALS = _MAX_ERRORS = _SEED = None
 
@@ -33,8 +36,8 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-c", "--config", type=Path, default=DEFAULT_CONFIG,
                         help="existing BinaryLdpcCodec experiment; decoder is replaced with cpp mpgd")
-    parser.add_argument("--snr", type=float, default=0.8)
-    parser.add_argument("--iterations", type=int, default=300, help="fixed limit of complete CN/VN cycles")
+    parser.add_argument("--snr", type=float, default=0.0)
+    parser.add_argument("--iterations", type=int, default=50, help="fixed limit of complete CN/VN cycles (default: 50)")
     parser.add_argument("--trials", type=int, default=100_000_000)
     parser.add_argument("--max-errors", type=int, default=50)
     parser.add_argument("--workers", type=int)
@@ -42,9 +45,9 @@ def parse_args(argv=None):
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-configs", type=int)
     parser.add_argument("--dry-run", action="store_true", help="print grid size/settings without compiling or simulating")
-    for flag, defaults in (("alphas", DEFAULT_ALPHAS), ("eta-rs", DEFAULT_STEPS),
-                           ("eta-vs", DEFAULT_STEPS), ("tau-rs", DEFAULT_TAUS),
-                           ("tau-vs", DEFAULT_TAUS)):
+    for flag, defaults in (("alphas", DEFAULT_ALPHAS), ("eta-rs", DEFAULT_ETA_RS),
+                           ("eta-vs", DEFAULT_ETA_VS), ("tau-rs", DEFAULT_TAU_RS),
+                           ("tau-vs", DEFAULT_TAU_VS)):
         parser.add_argument(f"--{flag}", type=comma_separated_floats, default=defaults)
     return parser.parse_args(argv)
 
