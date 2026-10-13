@@ -21,14 +21,14 @@ from .tune_gdms import comma_separated_floats, default_workers, result_score
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 # Reuse the existing code/channel experiment, replacing only its decoder.
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gdms.json"
-DEFAULT_OUTPUT = PROJECT_DIR / "params_mpgd_l2_snr0_100.txt"
-# L2 needs a new sweep: 5 * 8 * 7 * 7 * 8 * 7 = 109,760 combinations.
-DEFAULT_ALPHAS = (0.5, 0.75, 0.875, 1.0, 1.25)
-DEFAULT_ETA_RS = (0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 1.75, 2.0)
-DEFAULT_ETA_VS = (0.1, 0.25, 0.5, 0.7, 0.8, 1.0, 1.5)
-DEFAULT_L2_RS = (0.0, 0.01, 0.03, 0.1, 0.3, 1.0, 2.0)
-DEFAULT_L2_VS = (0.0, 0.1, 0.3, 0.5, 1.0, 2.0, 3.0, 4.0)
-DEFAULT_MAX_VALUES = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 1e6)
+DEFAULT_OUTPUT = PROJECT_DIR / "params_mpgd_l2_snr0_fine50.txt"
+# Fine grid around the L2 winner: 11 * 5 * 5 * 5 * 5 * 3 = 20,625 combinations.
+DEFAULT_ALPHAS = tuple(round(0.75 + 0.025 * i, 3) for i in range(11))
+DEFAULT_ETA_RS = (0.9, 0.95, 1.0, 1.05, 1.1)
+DEFAULT_ETA_VS = DEFAULT_ETA_RS
+DEFAULT_L2_RS = DEFAULT_ETA_RS
+DEFAULT_L2_VS = DEFAULT_ETA_RS
+DEFAULT_MAX_VALUES = (0.9, 1.0, 1.1)
 
 _BASE_EXPERIMENT = _SNR_DB = _MAX_TRIALS = _MAX_ERRORS = _SEED = None
 
@@ -40,7 +40,7 @@ def parse_args(argv=None):
     parser.add_argument("--snr", type=float, default=0.0)
     parser.add_argument("--iterations", type=int, default=50, help="fixed limit of complete CN/VN cycles (default: 50)")
     parser.add_argument("--trials", type=int, default=100_000_000)
-    parser.add_argument("--max-errors", type=int, default=100)
+    parser.add_argument("--max-errors", type=int, default=50)
     parser.add_argument("--workers", type=int)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)

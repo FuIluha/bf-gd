@@ -185,8 +185,9 @@ class MpgdTests(unittest.TestCase):
             dict(alpha=2.0, eta_r=0.2, eta_v=0.4, l2_r=0.0, l2_v=0.7, max_value=1e6),
         ])
         args = tune_mpgd.parse_args([])
-        self.assertEqual(math.prod(len(x) for x in tune_mpgd.parameter_axes(args).values()), 109_760)
-        self.assertIn(1e6, tune_mpgd.parameter_axes(args)["max_value"])
+        self.assertEqual(math.prod(len(x) for x in tune_mpgd.parameter_axes(args).values()), 20_625)
+        self.assertEqual(tune_mpgd.parameter_axes(args)["max_value"], (0.9, 1.0, 1.1))
+        self.assertEqual(args.max_errors, 50)
 
     def test_tuner_counts_early_wrong_codewords_and_fixed_error_limit(self):
         fake = SimpleNamespace(

@@ -29,3 +29,6 @@ codes/*.alist
 
 lbc_encoder/*.o
 lbc_encoder/*.so
+
+params_mpgd_l2_snr0_fine50.txt
+params_mpgd_l2_snr0_fine50.jsonl

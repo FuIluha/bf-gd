@@ -30,38 +30,38 @@ It does not modify that config or ordinary simulation result files.
 ```console
 python3 -m tuning.tune_mpgd --dry-run
 mkdir -p logs
-sbatch tuning/tune_mpgd.sh --snr 0.0 --iterations 50 --max-errors 100
+sbatch tuning/tune_mpgd.sh --snr 0.0 --iterations 50 --max-errors 50
 ```
 
-The launcher requests 128 CPUs. Every candidate collects 100 actual frame
+The launcher requests 128 CPUs. Every candidate collects 50 actual frame
 errors at SNR 0.0 dB, with a safety cap of 100,000,000 frames. Wrong codewords
 after early stopping are counted as errors. All candidates receive the same
 channel realizations, controlled by `--seed`; scheduling does not change them.
 There is no refinement or adaptive candidate elimination.
 
-The L2 default grid has **109,760 combinations** and independently searches
-all six decoder parameters. L2 weights need a new sweep; the former entropy
-weights are not reused under new names.
+The L2 default grid has **20,625 combinations** around the previous winner
+(alpha=0.875, eta_r=eta_v=l2_r=l2_v=max_value=1). It searches all six
+parameters using a fixed grid.
 
 | Parameter | CLI option | Values |
 | --- | --- | --- |
-| `alpha` | `--alphas` | 0.5, 0.75, 0.875, 1, 1.25 |
-| `eta_r` | `--eta-rs` | 0.05, 0.1, 0.25, 0.5, 1, 1.5, 1.75, 2 |
-| `eta_v` | `--eta-vs` | 0.1, 0.25, 0.5, 0.7, 0.8, 1, 1.5 |
-| `l2_r` | `--l2-rs` | 0, 0.01, 0.03, 0.1, 0.3, 1, 2 |
-| `l2_v` | `--l2-vs` | 0, 0.1, 0.3, 0.5, 1, 2, 3, 4 |
-| `max_value` | `--max-values` | 0.5, 0.75, 1, 1.25, 1.5, 2, 1000000 |
+| `alpha` | `--alphas` | 0.75–1.0, step 0.025 |
+| `eta_r` | `--eta-rs` | 0.9, 0.95, 1, 1.05, 1.1 |
+| `eta_v` | `--eta-vs` | 0.9, 0.95, 1, 1.05, 1.1 |
+| `l2_r` | `--l2-rs` | 0.9, 0.95, 1, 1.05, 1.1 |
+| `l2_v` | `--l2-vs` | 0.9, 0.95, 1, 1.05, 1.1 |
+| `max_value` | `--max-values` | 0.9, 1, 1.1 |
 
 Specify comma-separated values to replace any axis. Only the requested grid
 is tested; no baseline outside the lists is silently added. The iteration
 budget defaults to 50 complete CN/VN cycles and is set by `--iterations`;
-the message bound is independently searched with `--max-values`. The value
-1000000 tests a very wide range, but is still a finite bound. Increasing the
+the message bound is independently searched with `--max-values`. An explicit
+`--max-values 1000000` tests a very wide range, but still uses a finite bound. Increasing the
 bound can amplify the CN products; numerical failures are logged as invalid
 and excluded from best-parameter selection.
 
-Each result is printed and flushed to `params_mpgd_l2_snr0_100.jsonl`.
-Improvements are atomically saved to `params_mpgd_l2_snr0_100.txt`, including
+Each result is printed and flushed to `params_mpgd_l2_snr0_fine50.jsonl`.
+Improvements are atomically saved to `params_mpgd_l2_snr0_fine50.txt`, including
 the regularization type (`l2`), all six parameters, complete codec settings,
 observed trial/error counts, seed and channel-output type. Ranking uses FER,
 then BER, then mean iterations; exact ties use grid order, independently of
@@ -76,5 +76,6 @@ python3 -m tuning.tune_mpgd --workers 2 --max-configs 4 \
 ```
 
 Monitor the server search with `tail -f logs/tune_mpgd_<jobid>.out` or inspect
-`params_mpgd_l2_snr0_100.jsonl` for every completed candidate. The new default
-paths preserve earlier entropy sweeps (`params_mpgd*`, `params_mpgd_snr0*`).
+`params_mpgd_l2_snr0_fine50.jsonl` for every completed candidate. The new default
+paths preserve the earlier broad L2 sweep (`params_mpgd_l2_snr0_100.*`)
+and entropy sweep results.
