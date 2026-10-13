@@ -15,7 +15,8 @@
         "gamma": 1.0,
         "eta": 0.01,
         "init": "y",
-        "theta": 1.5
+        "theta": 1.5,
+        "early_stop": true
       }
     }
   },

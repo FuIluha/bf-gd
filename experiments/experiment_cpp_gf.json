@@ -7,7 +7,7 @@
       "algorithm": "cpp gf",
       "src_dir": "codes",
       "code": "ldpc_5g_k120_n600.json",
-      "n_iterations": 100,
+      "n_iterations": 300,
       "llr_type": "float32",
       "decoder_params": {
         "alpha": 1.0,
@@ -15,7 +15,8 @@
         "gamma": 1.0,
         "eta": 0.01,
         "init": "y",
-        "theta": 1.5
+        "theta": 1.5,
+        "early_stop": true
       }
     }
   },

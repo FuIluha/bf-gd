@@ -29,6 +29,8 @@ class BinLdpcGfDecoder(BinLdpcDecoderBase):
         self.init = kwargs.get("init", "zero")
         # After every Euler step x is clipped to [-theta, theta]; inf disables clipping.
         self.theta = float(kwargs.get("theta", np.inf))
+        # Stop as soon as sign(x) satisfies every check (never tested on x(0)).
+        self.early_stop = bool(kwargs.get("early_stop", False))
 
         if self.eta <= 0:
             raise ValueError("eta must be positive")
@@ -119,12 +121,22 @@ class BinLdpcGfDecoder(BinLdpcDecoderBase):
             return np.where(y >= 0, 1.0, -1.0)
         return np.zeros_like(y)
 
+    def syndrome_is_zero(self, x):
+        """True if the hard decision sign(x) (bit 1 where x < 0) satisfies every check."""
+        bits = (x < 0).astype(np.int32)
+        parities = np.add.reduceat(bits[self.edge_vn], self.check_offsets[:-1]) % 2
+        return not np.any(parities)
+
     def decode(self, llr_in, llr_out, rng=None):
         y = llr_in.astype(np.float64, copy=True)
         x = self.initial_point(y)
 
-        for _ in range(self.n_iterations):
+        performed = 0
+        while performed < self.n_iterations:
             x = self.step(x, y)
+            performed += 1
+            if self.early_stop and self.syndrome_is_zero(x):
+                break
 
         llr_out[:] = x
-        return self.n_iterations
+        return performed

@@ -80,6 +80,7 @@ def load_library():
         ctypes.c_double,  # eta
         ctypes.c_uint32,  # init mode, index in INIT_MODES
         ctypes.c_double,  # theta
+        ctypes.c_uint32,  # early stop on a zero syndrome
         uint32_array,
         uint32_array,
     ]
@@ -112,6 +113,9 @@ class CppBinLdpcGfDecoder(BinLdpcDecoderBase):
         self.init = kwargs.get("init", "zero")
         # After every Euler step x is clipped to [-theta, theta]; inf disables clipping.
         self.theta = float(kwargs.get("theta", np.inf))
+        # Stop as soon as sign(x) satisfies every check; decode() then returns
+        # the number of iterations actually performed.
+        self.early_stop = bool(kwargs.get("early_stop", False))
 
         if self.eta <= 0:
             raise ValueError("eta must be positive")
@@ -141,6 +145,7 @@ class CppBinLdpcGfDecoder(BinLdpcDecoderBase):
             self.eta,
             INIT_MODES.index(self.init),
             self.theta,
+            int(self.early_stop),
             self.edge_vn,
             self.check_offsets,
         )

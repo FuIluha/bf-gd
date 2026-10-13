@@ -50,7 +50,7 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = PROJECT_DIR / "experiments" / "experiment_cpp_gf.json"
 DEFAULT_OUTPUT = PROJECT_DIR / "params_cpp_gf.txt"
 
-DEFAULT_ITERATIONS = 100
+DEFAULT_ITERATIONS = 300
 
 # 17 * 15 * 1 * 18 * 10 * 3 = 137700 combinations.
 # Wide ranges, denser around the optimum of the 0 dB search (alpha 0.5-1.2,
@@ -59,7 +59,8 @@ DEFAULT_ITERATIONS = 100
 # x - y (coefficient 1). Large alpha freezes the signs early and large beta lets
 # the check term (variable degree up to 18) swamp the channel; the edges are
 # kept to confirm that.
-# The etas are for 100 iterations (integration time T = 100 * eta): below
+# The etas were tuned for 100 iterations (integration time T = 100 * eta); with early
+# stop 300 is only the upper limit, the average is ~10. Below
 # eta = 0.01 (T < 1) the state hardly leaves x(0), but init hard seems to need
 # small steps; unclipped Euler is stable only for eta < ~2 / (1 + 8 alpha + 2 beta
 # d_v), clipping to theta ~ 1 keeps eta ~ 0.1-0.15 useful, and at 0.2 and above
@@ -100,6 +101,7 @@ class Candidate:
     next_frame: int = 0
     frame_errors: int = 0
     bit_errors: float = 0.0
+    iterations: int = 0
     invalid: bool = False
     rung: int = 0
     rung_frames: int = 0
@@ -115,6 +117,10 @@ class Candidate:
     @property
     def ber(self):
         return self.bit_errors / self.frames if self.frames else math.inf
+
+    @property
+    def average_iterations(self):
+        return self.iterations / self.frames if self.frames else math.inf
 
     def score(self):
         if self.invalid or not self.frames:
@@ -132,6 +138,7 @@ class Candidate:
             "frame_errors": self.frame_errors,
             "fer": self.fer if self.frames else None,
             "ber": self.ber if self.frames else None,
+            "average_iterations": self.average_iterations if self.frames else None,
         }
 
 
@@ -240,10 +247,11 @@ def load_base_experiment(config_path, iterations):
     return experiment, config.get("simulation", {})
 
 
-def make_params(alpha, beta, gamma, eta, theta, init):
+def make_params(alpha, beta, gamma, eta, theta, init, early_stop):
     return {
         "alpha": float(alpha), "beta": float(beta), "gamma": float(gamma),
         "eta": float(eta), "theta": float(theta), "init": init,
+        "early_stop": bool(early_stop),
     }
 
 
@@ -251,7 +259,7 @@ def reference_params(base_params):
     return make_params(
         base_params["alpha"], base_params["beta"], base_params["gamma"],
         base_params["eta"], base_params.get("theta", math.inf),
-        base_params.get("init", "zero"),
+        base_params.get("init", "zero"), base_params.get("early_stop", False),
     )
 
 
@@ -262,7 +270,10 @@ def parameter_grid(args, base_params):
     for alpha, beta, gamma, eta, theta, init in itertools.product(
         args.alphas, args.betas, args.gammas, args.etas, args.thetas, args.inits,
     ):
-        candidates.append(Candidate(make_params(alpha, beta, gamma, eta, theta, init)))
+        candidates.append(Candidate(make_params(
+            alpha, beta, gamma, eta, theta, init,
+            base_params.get("early_stop", False),
+        )))
     return unique(candidates)
 
 
@@ -306,7 +317,9 @@ def zoom_candidates(args, centers):
             neighbour_values(p["eta"], args.etas),
             neighbour_values(p["theta"], args.thetas, linear=True),
         ):
-            params = make_params(alpha, beta, p["gamma"], eta, theta, p["init"])
+            params = make_params(
+                alpha, beta, p["gamma"], eta, theta, p["init"], p["early_stop"],
+            )
             candidates.append(Candidate(params, source="zoom"))
     return candidates
 
@@ -339,19 +352,21 @@ def run_chunk(task):
     instance = get_instance(params)
     frame_errors = 0
     bit_errors = 0.0
+    iterations = 0
     frames = 0
     for frame in range(start, end):
         rng = np.random.default_rng([_SEED, stream, frame])
         try:
             result = instance.run(_SNR_DB, rng)
         except FloatingPointError:
-            return index, True, 0, 0.0, 0
+            return index, True, 0, 0.0, 0, 0
         frames += 1
         frame_errors += int(result.fe_cum)
         bit_errors += float(result.be_cum)
+        iterations += int(result.n_iter)
         if abort_errors is not None and frame_errors >= abort_errors:
             break
-    return index, False, frame_errors, bit_errors, frames
+    return index, False, frame_errors, bit_errors, frames, iterations
 
 
 # ------------------------------------------------------------ search logic
@@ -369,7 +384,7 @@ def evaluate(pool, candidates, target_frames, stream, chunk, abort_errors, max_e
             end = min(start + chunk, target_frames)
             tasks.append((index, candidate.params, stream, start, end, abort_errors))
         candidate.next_frame = max(candidate.next_frame, target_frames)
-    for index, invalid, frame_errors, bit_errors, frames in pool.imap_unordered(
+    for index, invalid, frame_errors, bit_errors, frames, iterations in pool.imap_unordered(
         run_chunk, tasks, chunksize=1,
     ):
         candidate = candidates[index]
@@ -378,6 +393,7 @@ def evaluate(pool, candidates, target_frames, stream, chunk, abort_errors, max_e
             continue
         candidate.frame_errors += frame_errors
         candidate.bit_errors += bit_errors
+        candidate.iterations += iterations
         candidate.frames += frames
 
 
@@ -549,6 +565,7 @@ def stats(candidate):
         "fer": candidate.fer,
         "fer_95ci": wilson_interval(candidate.frame_errors, candidate.frames),
         "ber": candidate.ber,
+        "average_iterations": candidate.average_iterations,
     }
 
 
@@ -659,7 +676,8 @@ def main():
         f"Search completed in {(time.perf_counter() - search.started) / 60:.1f} min. "
         f"{search.invalid_count} parameter sets diverged.\n"
         f"Best (fresh noise): FER={best.fer:.4g} "
-        f"({best.frame_errors} errors / {best.frames} frames), BER={best.ber:.4g}\n"
+        f"({best.frame_errors} errors / {best.frames} frames), BER={best.ber:.4g}, "
+        f"avg iterations={best.average_iterations:.2f}\n"
         f"  {format_params(best.params)}\n"
         f"Reference: FER={reference_entry.fer:.4g}  {format_params(reference_entry.params)}",
         flush=True,
@@ -672,7 +690,8 @@ def main():
             continue
         print(
             f"  init={init:<4s}: FER={candidate.fer:.4g} ({candidate.frame_errors} errors / "
-            f"{candidate.frames} frames)  {format_params(candidate.params)}",
+            f"{candidate.frames} frames), avg iter={candidate.average_iterations:.2f}  "
+            f"{format_params(candidate.params)}",
             flush=True,
         )
     print(f"Saved to {output_path}, all candidates in {log_path}", flush=True)

@@ -10,7 +10,7 @@
 # --snr         SNR in dB (default -1)
 # --trials      maximum frames per candidate (default 100000000)
 # --max-errors  a candidate stops after this many frame errors (default 100)
-# --iterations  decoder iterations (default 100, overrides the config)
+# --iterations  maximum decoder iterations (default 300, overrides the config)
 # Best parameters: params_cpp_gf.txt, every candidate: params_cpp_gf.jsonl,
 # progress: logs/tune_gf_<job id>.out
 
