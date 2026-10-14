@@ -10,12 +10,12 @@
       "n_iterations": 300,
       "llr_type": "float32",
       "decoder_params": {
-        "alpha": 1.0,
+        "alpha": 0.0125,
         "beta": 2.0,
         "gamma": 1.0,
-        "eta": 0.01,
-        "init": "y",
-        "theta": 1.5,
+        "eta": 0.16,
+        "init": "zero",
+        "theta": 1.02,
         "early_stop": true
       }
     }
